@@ -29,5 +29,5 @@ export const API_URL: string = isDev
   ? `http://${getLocalBackendIP()}:3000`
   : (
     (typeof process !== 'undefined' ? process.env?.EXPO_PUBLIC_API_URL : undefined) ??
-    'https://demo2026pondy-production.up.railway.app'
+    'https://kindeejuly2026-production.up.railway.app'
   );

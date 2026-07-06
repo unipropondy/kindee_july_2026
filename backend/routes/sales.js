@@ -496,6 +496,43 @@ router.get("/range", async (req, res) => {
   }
 });
 
+router.get("/settlement/:id", async (req, res) => {
+  try {
+    const pool = await poolPromise;
+    const orderId = req.params.id;
+
+    // Fetch the header
+    const headerResult = await pool.request()
+      .input("OrderId", sql.UniqueIdentifier, orderId)
+      .query("SELECT TOP 1 * FROM SettlementHeader WHERE OrderId = @OrderId OR SettlementID = @OrderId");
+    
+    if (headerResult.recordset.length === 0) {
+      return res.status(404).json({ error: "Settlement not found" });
+    }
+
+    const header = headerResult.recordset[0];
+    const settlementId = header.SettlementID;
+
+    // Fetch the items
+    const itemsResult = await pool.request()
+      .input("SettlementID", sql.UniqueIdentifier, settlementId)
+      .query("SELECT * FROM SettlementItemDetail WHERE SettlementID = @SettlementID");
+
+    // Fetch the payments
+    const paymentsResult = await pool.request()
+      .input("SettlementID", sql.UniqueIdentifier, settlementId)
+      .query("SELECT * FROM PaymentDetailCur WHERE SettlementId = @SettlementID UNION SELECT * FROM PaymentDetail WHERE SettlementId = @SettlementID");
+
+    res.json({
+      header,
+      items: itemsResult.recordset || [],
+      payments: paymentsResult.recordset || []
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.get("/detail/:id", async (req, res) => {
   try {
     const pool = await poolPromise;
@@ -1039,6 +1076,7 @@ router.get("/day-end-summary", async (req, res) => {
           SUM(ISNULL(sh.DiscountAmount, 0)) as TotalDiscount,
           SUM(ISNULL(sh.ServiceCharge, 0)) as TotalServiceCharge,
           SUM(ISNULL(sh.RoundedBy, 0)) as TotalRoundOff,
+          SUM(ISNULL(sh.TakeawayCharge, 0)) as TotalTakeawayCharge,
           COUNT(sh.SettlementID) as TotalBills,
           SUM(ISNULL(sh.VoidItemQty, 0)) as VoidQty,
           SUM(ISNULL(sh.VoidItemAmount, 0)) as VoidAmount,
@@ -1052,7 +1090,7 @@ router.get("/day-end-summary", async (req, res) => {
  
     const analysis = analysisRes.recordset[0] || { 
       BaseSales: 0, TotalSales: 0, TotalTax: 0, TotalDiscount: 0, TotalServiceCharge: 0, 
-      TotalRoundOff: 0, TotalBills: 0, VoidQty: 0, VoidAmount: 0
+      TotalRoundOff: 0, TotalTakeawayCharge: 0, TotalBills: 0, VoidQty: 0, VoidAmount: 0
     };
 
     const totalSales = analysis.TotalSales || 0;
@@ -1215,6 +1253,7 @@ router.get("/day-end-summary", async (req, res) => {
         totalTax: analysis.TotalTax || 0,
         totalDiscount: analysis.TotalDiscount || 0,
         totalServiceCharge: analysis.TotalServiceCharge || 0,
+        takeawayCharge: analysis.TotalTakeawayCharge || 0,
         roundOff: analysis.TotalRoundOff || 0,
         netTotal: totalSales, 
         billCount,

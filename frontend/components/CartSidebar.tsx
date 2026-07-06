@@ -1408,90 +1408,15 @@ export default React.memo(function CartSidebar({ width = 400 }: CartSidebarProps
 
     // 2. Start Printers immediately (No waiting)
     (async () => {
-      const kitchenGroups: Record<string, any[]> = {};
-      const expandedItems: any[] = [];
-      
-      currentItems.forEach((item: any) => {
-        expandedItems.push(item);
-        if (item.comboSelections && item.comboSelections.length > 0) {
-          item.comboSelections.forEach((g: any) => {
-            if (Array.isArray(g.items)) {
-              g.items.forEach((opt: any) => {
-                const optKitchenCode = opt.KitchenTypeCode || opt.kitchenCode || opt.kitchenTypeCode;
-                const parentKitchenCode = item.KitchenTypeCode || item.kitchenCode || item.kitchenTypeCode || "0";
-                if (optKitchenCode && optKitchenCode !== parentKitchenCode) {
-                  expandedItems.push({
-                    ...opt,
-                    id: opt.dishId,
-                    qty: item.quantity || item.qty || 1,
-                    price: 0,
-                    name: `${opt.name} (Combo - ${item.name})`,
-                    KitchenTypeCode: optKitchenCode,
-                    KitchenTypeName: opt.KitchenTypeName || opt.kitchenTypeName,
-                    PrinterIP: opt.PrinterIP || opt.printerIp,
-                  });
-                }
-              });
-            }
-          });
-        }
-      });
-
-      expandedItems.forEach((item: any) => {
-        const kCode = item.KitchenTypeCode || "0";
-        if (!kitchenGroups[kCode]) kitchenGroups[kCode] = [];
-        kitchenGroups[kCode].push(item);
-      });
-
-      for (const [kCode, items] of Object.entries(kitchenGroups)) {
-        const printerIp = items[0].PrinterIP;
-        const kotData = {
-          orderId: currentOrderId,
-          orderNo: currentOrderId,
-          tableNo:
-            orderContext.orderType === "DINE_IN"
-              ? orderContext.tableNo
-              : `TW-${orderContext.takeawayNo}`,
-          waiterName: user?.userName || "Staff",
-          items: items,
-          kitchenName:
-            items[0].KitchenTypeName || (kCode === "0" ? "KITCHEN" : kCode),
-        };
-        const isAdditional = cart.some((i: any) => isItemSent(i));
-        if (enableKOT) {
-          await UniversalPrinter.printKOT(
-            kotData,
-            "SYSTEM",
-            isAdditional ? "ADDITIONAL" : "NEW",
-            printerIp,
-          );
-        } else {
-          console.log("🖨️ [SidebarTurboPrint] KOT printing is disabled in General Settings.");
-        }
-      }
-
-      // 🚀 KDS Auto-Print Copy
-      const enableKDSPrint = useGeneralSettingsStore.getState().settings.enableKDSPrint !== false;
-      if (enableKDSPrint) {
-        (async () => {
-          try {
-            const kdsData = {
-              orderId: currentOrderId,
-              orderNo: currentOrderId,
-              tableNo:
-                orderContext.orderType === "DINE_IN"
-                  ? orderContext.tableNo
-                  : `TW-${orderContext.takeawayNo}`,
-              waiterName: user?.userName || "Staff",
-              items: currentItems,
-              kitchenName: "KDS",
-            };
-            await UniversalPrinter.printKDSOrder(kdsData, "SYSTEM");
-          } catch (err) {
-            console.error("KDS Auto-Print failed:", err);
-          }
-        })();
-      }
+      const isAdditional = cart.some((i: any) => isItemSent(i));
+      await UniversalPrinter.routeAndPrintOrderKOT(
+        currentOrderId,
+        orderContext,
+        currentItems,
+        isAdditional,
+        user?.userName || "Staff",
+        true // skipDuplicateGuard: cashier manual send is always authoritative
+      );
     })();
 
     // 3. Close Sidebar & Redirect instantly

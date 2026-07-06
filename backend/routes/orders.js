@@ -324,6 +324,16 @@ async function syncToProfessionalTables(
       `);
   } else {
     orderGuid = require("crypto").randomUUID();
+    let initialTakeawayCharge = 0;
+    if (isTakeaway) {
+      try {
+        const settingsRes = await transaction.request().query("SELECT TOP 1 ISNULL(TakeawayCharges, 0) AS TakeawayCharges FROM CompanySettings WHERE Id = '1'");
+        initialTakeawayCharge = parseFloat(settingsRes.recordset[0]?.TakeawayCharges) || 0;
+      } catch (settingsErr) {
+        console.warn("⚠️ [orders.js] Failed to fetch TakeawayCharges from settings:", settingsErr.message);
+      }
+    }
+
     await transaction
       .request()
       .input("orderId", sql.UniqueIdentifier, orderGuid)
@@ -335,8 +345,9 @@ async function syncToProfessionalTables(
       .input("isTakeaway", sql.Bit, isTakeaway ? 1 : 0)
       .input("pax", sql.Int, tablePax)
       .input("customerName", sql.NVarChar, tableCustomerName)
+      .input("takeawayCharge", sql.Decimal(18, 2), initialTakeawayCharge)
       .query(
-        "INSERT INTO RestaurantOrderCur (OrderId, OrderNumber, OrderDateTime, Tableno, StatusCode, CreatedBy, CreatedOn, isOrderClosed, BusinessUnitId, PriorityCode, IsTakeAway, Pax, CustomerName) VALUES (@orderId, @orderNo, GETDATE(), @tableNo, 1, @userId, GETDATE(), 0, @bizId, @priority, @isTakeaway, @pax, @customerName)",
+        "INSERT INTO RestaurantOrderCur (OrderId, OrderNumber, OrderDateTime, Tableno, StatusCode, CreatedBy, CreatedOn, isOrderClosed, BusinessUnitId, PriorityCode, IsTakeAway, Pax, CustomerName, TakeawayCharge) VALUES (@orderId, @orderNo, GETDATE(), @tableNo, 1, @userId, GETDATE(), 0, @bizId, @priority, @isTakeaway, @pax, @customerName, @takeawayCharge)",
       );
   }
 

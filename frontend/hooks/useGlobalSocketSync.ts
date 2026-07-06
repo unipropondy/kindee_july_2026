@@ -5,6 +5,7 @@ import { useCartStore } from "../stores/cartStore";
 import { useOrderContextStore } from "../stores/orderContextStore";
 import { useTableStatusStore } from "../stores/tableStatusStore";
 import { API_URL } from "../constants/Config";
+import UniversalPrinter from "../components/UniversalPrinter";
 
 /**
  * useGlobalSocketSync
@@ -64,6 +65,37 @@ export function useGlobalSocketSync() {
       }
       appendOrder(payload.orderId, payload.context, payload.items, payload.createdAt);
       markItemsSent(payload.orderId);
+
+      // --- QR Auto-Print ---
+      const isQrOrder =
+        payload?.context?.entryStatus === "q" ||
+        payload?.entryStatus === "q" ||
+        payload?.context?.orderSource === "QR";
+
+      if (isQrOrder && payload.items?.length > 0) {
+        if (__DEV__) {
+          console.log("🖨️ [Socket-Global] QR order detected — triggering auto-print for:", payload.orderId);
+        }
+        const items = payload.items ?? [];
+        const context = payload.context ?? {};
+        const isAdditional =
+          payload.isAdditional === true ||
+          items.some((i: any) => i.status === "SENT");
+
+        UniversalPrinter.routeAndPrintOrderKOT(
+          payload.orderId,
+          context,
+          items,
+          isAdditional,
+          context.waiterName || context.userName || "QR Order",
+        ).then((printed: boolean) => {
+          if (__DEV__ && printed) {
+            console.log("✅ [Socket-Global] QR KOT printed for order:", payload.orderId);
+          }
+        }).catch((err: any) => {
+          console.error("[Socket-Global] QR auto-print failed:", err);
+        });
+      }
     };
 
     // --- 2. TABLE STATUS ---
@@ -241,6 +273,44 @@ export function useGlobalSocketSync() {
       useActiveOrdersStore.setState({ activeOrders: filtered });
     };
 
+    // --- 5.6 QR PAYMENT CONFIRMED (AUTO RECEIPT PRINT) ---
+    const handleQrPaymentConfirmed = (data: { tableId: string; tableNo: string; orderId: string }) => {
+      const { orderId } = data;
+      if (__DEV__) {
+        console.log(`💳 [Socket-Global] QR Payment confirmed for Order: ${orderId}. Triggering receipt print...`);
+      }
+      if (!orderId) return;
+
+      fetch(`${API_URL}/api/sales/settlement/${orderId}`)
+        .then((res) => {
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          return res.json();
+        })
+        .then((settlementData) => {
+          if (!settlementData?.header) {
+            if (__DEV__) console.log(`⚠️ [Socket-Global] No settlement found yet for Order: ${orderId}. Will retry is not needed — receipt prints once settlement exists.`);
+            return;
+          }
+          const isCancelled = settlementData.header.IsCancelled === 1 || settlementData.header.IsCancelled === true;
+          if (isCancelled) {
+            if (__DEV__) console.log(`🚫 [Socket-Global] Settlement cancelled for Order: ${orderId}. Skipping receipt.`);
+            return;
+          }
+          UniversalPrinter.printReceiptAuto(settlementData)
+            .then((printed: boolean) => {
+              if (__DEV__ && printed) {
+                console.log(`✅ [Socket-Global] Auto-receipt printed for QR Order: ${orderId}`);
+              }
+            })
+            .catch((err: any) => {
+              console.error("❌ [Socket-Global] Auto-receipt print failed:", err);
+            });
+        })
+        .catch((err: any) => {
+          console.error(`❌ [Socket-Global] Failed to fetch settlement for QR receipt print:`, err);
+        });
+    };
+
     // --- 6. INSTANT CART SYNC (Socket-First) ---
     const handleCartChange = (payload: { tableId: string; contextId: string; items: any[]; lastUpdate: number; version?: number }) => {
       const now = Date.now();
@@ -273,6 +343,7 @@ export function useGlobalSocketSync() {
     socket.on("cart_updated", handleCartUpdated);
     socket.on("order_status_update", handleOrderStatusUpdate);
     socket.on("order_closed", handleOrderClosed);
+    socket.on("qr_payment_confirmed", handleQrPaymentConfirmed);
     socket.on("cart_change", handleCartChange);
 
     return () => {
@@ -285,6 +356,7 @@ export function useGlobalSocketSync() {
       socket.off("cart_updated", handleCartUpdated);
       socket.off("order_status_update", handleOrderStatusUpdate);
       socket.off("order_closed", handleOrderClosed);
+      socket.off("qr_payment_confirmed", handleQrPaymentConfirmed);
       socket.off("cart_change", handleCartChange);
     };
   }, []);

@@ -419,9 +419,11 @@ const [paymentMessage, setPaymentMessage] = useState("");
   const scReducedLocal = useServiceChargeOverrideStore((s) =>
     displayOrderId ? s.overrides[displayOrderId.toLowerCase()] : false
   );
+  const [takeawayChargeApplied, setTakeawayChargeApplied] = useState(false);
+  const [takeawayChargeAmt, setTakeawayChargeAmt] = useState(0);
 
   useEffect(() => {
-    console.log("🔍 [Payment] SC override useEffect triggered. displayOrderId:", displayOrderId, "isFocused:", isFocused);
+    console.log("🔍 [Payment] SC & Takeaway override useEffect triggered. displayOrderId:", displayOrderId, "isFocused:", isFocused);
     if (displayOrderId && isFocused) {
       const token = useAuthStore.getState().token;
       const url = `${API_URL}/api/orders/${displayOrderId}/sc-override`;
@@ -442,6 +444,24 @@ const [paymentMessage, setPaymentMessage] = useState("");
         })
         .catch((e) => {
           console.warn("❌ [Payment] Failed to fetch KDS/SC override status:", e);
+        });
+
+      fetch(`${API_URL}/api/orders/${displayOrderId}/takeaway-charge`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      })
+        .then((r) => r.json())
+        .then((d) => {
+          console.log("✅ [Payment] Takeaway charge response:", d);
+          if (d?.takeawayCharge > 0) {
+            setTakeawayChargeApplied(true);
+            setTakeawayChargeAmt(d.takeawayCharge);
+          } else {
+            setTakeawayChargeApplied(false);
+            setTakeawayChargeAmt(0);
+          }
+        })
+        .catch((e) => {
+          console.warn("❌ [Payment] Failed to fetch takeaway-charge status:", e);
         });
     }
   }, [displayOrderId, isFocused]);
@@ -734,8 +754,9 @@ const [paymentMessage, setPaymentMessage] = useState("");
     return Math.max(0, scEligibleSubtotal - proportion * discountAmount);
   }, [scEligibleSubtotal, subtotal, discountAmount, isLedgerCollection]);
 
+  const currentTakeawayCharge = takeawayChargeApplied ? takeawayChargeAmt : 0;
   const serviceChargeAmt = isLedgerCollection ? 0 : (scReduced || scReducedLocal ? 0 : scEligibleNet * scRate);
-  const taxableAmount = netAfterDiscount + serviceChargeAmt;
+  const taxableAmount = netAfterDiscount + serviceChargeAmt + currentTakeawayCharge;
   const tax = isLedgerCollection ? 0 : taxableAmount * gstRate;
   const baseTotal = taxableAmount + tax;
 
@@ -1253,6 +1274,7 @@ const confirmPayment = async () => {
       subTotal: subtotal,
       taxAmount: displayedTax,
       serviceCharge: displayedServiceCharge,
+      takeawayCharge: currentTakeawayCharge,
       discountAmount: discountAmount + payItemDiscount,
       discountType: discount?.type || "fixed",
       totalAmount: total,
@@ -1312,6 +1334,7 @@ const confirmPayment = async () => {
               items: JSON.stringify(finalItems || []),
               roundOff: displayedRoundOff.toFixed(2),
               serviceCharge: displayedServiceCharge.toFixed(2),
+              takeawayCharge: currentTakeawayCharge.toFixed(2),
               isSplit: splitItems ? "true" : "false",
               waiterName: context?.serverName ?? "",
             },

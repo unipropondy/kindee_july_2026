@@ -540,7 +540,8 @@ class SunmiPrinterService {
         serviceChargeAmount = scEligibleNet * (scPercentage / 100);
       }
       const hasSC = serviceChargeAmount > 0;
-      const taxableAmount = currentSubtotal + serviceChargeAmount;
+      const takeawayCharge = parseFloat(String(saleData.takeawayCharge || 0)) || 0;
+      const taxableAmount = currentSubtotal + serviceChargeAmount + takeawayCharge;
       const gstAmountRaw = gstRate > 0 ? taxableAmount * (gstRate / 100) : 0;
       const gstAmount = Math.round(gstAmountRaw * 100) / 100;
       
@@ -561,6 +562,10 @@ class SunmiPrinterService {
           allItemsHaveSC ? "Service Charge:" : "Item Service Charge:",
           `${symbol}${serviceChargeAmount.toFixed(2)}`
         ));
+      }
+
+      if (takeawayCharge > 0) {
+        await SunmiModule.printText(formatter.twoCols("Takeaway Charge:", `${symbol}${takeawayCharge.toFixed(2)}`));
       }
 
       if (gstRate > 0) {

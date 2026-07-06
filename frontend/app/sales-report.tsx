@@ -3181,7 +3181,7 @@ export default function SalesReport() {
                 <View style={{ backgroundColor: Theme.primary + "05", padding: 12, borderRadius: 12, marginBottom: 16, gap: 6 }}>
                   {/* Show subtotal + discount rows only when a bill discount was applied */}
                   {/* Show subtotal row when discount, service charge, or tax is applied */}
-                  {(selectedOrder?.DiscountAmount > 0 || Number(selectedOrder?.ServiceCharge) > 0 || Number(selectedOrder?.TotalTax) > 0) && (
+                  {(selectedOrder?.DiscountAmount > 0 || Number(selectedOrder?.ServiceCharge) > 0 || Number(selectedOrder?.TotalTax) > 0 || Number(selectedOrder?.TakeawayCharge) > 0) && (
                     <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
                       <Text style={{ fontSize: 12, fontFamily: Fonts.semiBold, color: Theme.textSecondary }}>Subtotal</Text>
                       <Text style={{ fontSize: 13, fontFamily: Fonts.bold, color: Theme.textPrimary }}>
@@ -3216,6 +3216,14 @@ export default function SalesReport() {
                       </Text>
                     </View>
                   )}
+                  {Number(selectedOrder?.TakeawayCharge) > 0 && (
+                    <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                      <Text style={{ fontSize: 12, fontFamily: Fonts.semiBold, color: Theme.textSecondary }}>Takeaway Charge</Text>
+                      <Text style={{ fontSize: 13, fontFamily: Fonts.bold, color: Theme.textPrimary }}>
+                        {formatCurrency(selectedOrder?.TakeawayCharge)}
+                      </Text>
+                    </View>
+                  )}
                   {Number(selectedOrder?.TotalTax) > 0 && (
                     <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
                       <Text style={{ fontSize: 12, fontFamily: Fonts.semiBold, color: Theme.textSecondary }}>GST</Text>
@@ -3224,7 +3232,7 @@ export default function SalesReport() {
                       </Text>
                     </View>
                   )}
-                  {(selectedOrder?.DiscountAmount > 0 || Number(selectedOrder?.ServiceCharge) > 0 || Number(selectedOrder?.TotalTax) > 0) && (
+                  {(selectedOrder?.DiscountAmount > 0 || Number(selectedOrder?.ServiceCharge) > 0 || Number(selectedOrder?.TotalTax) > 0 || Number(selectedOrder?.TakeawayCharge) > 0) && (
                     <View style={{ height: 1, backgroundColor: Theme.border + "50", marginVertical: 2 }} />
                   )}
                   {/* Final total + paid badge */}

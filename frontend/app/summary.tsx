@@ -123,6 +123,9 @@ export default function SummaryScreen() {
   const [isMerging, setIsMerging] = useState(false);
   const [scReduced, setScReduced] = useState(false);
   const [isReducingSC, setIsReducingSC] = useState(false);
+  const [takeawayChargeApplied, setTakeawayChargeApplied] = useState(false);
+  const [takeawayChargeAmt, setTakeawayChargeAmt] = useState(0);
+  const [isApplyingTakeaway, setIsApplyingTakeaway] = useState(false);
   const [splitQuantities, setSplitQuantities] = useState<
     Record<string, number>
   >({});
@@ -402,7 +405,7 @@ export default function SummaryScreen() {
     }
   }, [activeOrder]);
 
-  // Load saved SC override for this order whenever focused
+  // Load saved SC override and takeaway charge for this order whenever focused
   useEffect(() => {
     if (displayOrderId && isFocused) {
       const token = useAuthStore.getState().token;
@@ -417,6 +420,21 @@ export default function SummaryScreen() {
           } else {
             setScReduced(false);
             useServiceChargeOverrideStore.getState().setOverride(displayOrderId, false);
+          }
+        })
+        .catch(() => {});
+
+      fetch(`${API_URL}/api/orders/${displayOrderId}/takeaway-charge`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      })
+        .then((r) => r.json())
+        .then((d) => {
+          if (d?.takeawayCharge > 0) {
+            setTakeawayChargeApplied(true);
+            setTakeawayChargeAmt(d.takeawayCharge);
+          } else {
+            setTakeawayChargeApplied(false);
+            setTakeawayChargeAmt(0);
           }
         })
         .catch(() => {});
@@ -837,6 +855,7 @@ export default function SummaryScreen() {
         date: new Date(),
         isCheckout: true,
         serviceCharge: serviceChargeAmount,
+        takeawayCharge: currentTakeawayCharge,
       };
 
       if (enableCheckoutBill) {
@@ -909,6 +928,46 @@ export default function SummaryScreen() {
       showToast({ type: "error", message: "Network error" });
     } finally {
       setIsReducingSC(false);
+    }
+  };
+  // ── Apply/Remove Takeaway Charge Handler ──────────────────────────────────
+  const handleToggleTakeawayCharge = async () => {
+    if (!displayOrderId) {
+      showToast({ type: "error", message: "Order ID not found" });
+      return;
+    }
+    const shouldApply = !takeawayChargeApplied;
+    try {
+      setIsApplyingTakeaway(true);
+      const token = useAuthStore.getState().token;
+      const res = await fetch(`${API_URL}/api/orders/apply-takeaway-charge`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ orderId: displayOrderId, apply: shouldApply }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setTakeawayChargeApplied(shouldApply);
+        setTakeawayChargeAmt(data.takeawayCharge);
+        setShowBillOptions(false);
+        showToast({
+          type: "success",
+          message: shouldApply ? "Takeaway Charge Added" : "Takeaway Charge Removed",
+          subtitle: shouldApply 
+            ? `Bill updated — added takeaway charge of ${currencySymbol}${data.takeawayCharge.toFixed(2)}`
+            : "Bill updated — takeaway charge removed",
+        });
+      } else {
+        showToast({ type: "error", message: data.error || "Failed to update takeaway charge" });
+      }
+    } catch (err) {
+      console.error("Takeaway toggle error:", err);
+      showToast({ type: "error", message: "Network error" });
+    } finally {
+      setIsApplyingTakeaway(false);
     }
   };
 
@@ -1066,7 +1125,8 @@ export default function SummaryScreen() {
     () => (scReduced ? 0 : scEligibleNet * scRate),
     [scEligibleNet, scRate, scReduced],
   );
-  const taxableAmount = useMemo(() => netAfterDiscount + serviceChargeAmount, [netAfterDiscount, serviceChargeAmount]);
+  const currentTakeawayCharge = takeawayChargeApplied ? takeawayChargeAmt : 0;
+  const taxableAmount = useMemo(() => netAfterDiscount + serviceChargeAmount + currentTakeawayCharge, [netAfterDiscount, serviceChargeAmount, currentTakeawayCharge]);
   const gstAmountRaw = useMemo(() => taxableAmount * gstRate, [taxableAmount, gstRate]);
   // ✅ FIX: Round GST for display so breakdown matches the rounded grand total
   const gstAmount = useMemo(() => Math.round(gstAmountRaw * 100) / 100, [gstAmountRaw]);
@@ -1682,6 +1742,34 @@ export default function SummaryScreen() {
                   </View>
                 )}
 
+                {takeawayChargeApplied && takeawayChargeAmt > 0 && (
+                  <View
+                    style={[
+                      styles.summaryRow,
+                      ((isLandscape && !isTablet) ||
+                        (isPhone && !isLandscape)) && { marginBottom: 6 },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.summaryLabel,
+                        isPhone && !isLandscape && { fontSize: 13 },
+                      ]}
+                    >
+                      Takeaway Charge
+                    </Text>
+                    <Text
+                      style={[
+                        styles.summaryValue,
+                        isPhone && !isLandscape && { fontSize: 13 },
+                      ]}
+                    >
+                      {currencySymbol}
+                      {takeawayChargeAmt.toFixed(2)}
+                    </Text>
+                  </View>
+                )}
+
                 {gstRate > 0 && gstAmount > 0 && (
                   <View
                     style={[
@@ -2088,7 +2176,7 @@ export default function SummaryScreen() {
         <TouchableWithoutFeedback onPress={() => setShowBillOptions(false)}>
           <View style={styles.modalOverlay}>
             <TouchableWithoutFeedback>
-              <View style={[styles.modalContent, { maxWidth: 350 }]}>
+              <View style={[styles.modalContent, { maxWidth: 350, maxHeight: "85%" }]}>
                 <View style={styles.modalHeader}>
                   <Text style={styles.modalTitle}>Bill Options</Text>
                   <TouchableOpacity onPress={() => setShowBillOptions(false)}>
@@ -2104,115 +2192,150 @@ export default function SummaryScreen() {
                   Select an action for this bill
                 </Text>
 
-                <TouchableOpacity
-                  style={styles.billOptionItem}
-                  onPress={handleSplitBill}
-                >
-                  <View
-                    style={[
-                      styles.billOptionIcon,
-                      { backgroundColor: Theme.infoBg },
-                    ]}
+                <ScrollView style={{ maxHeight: 350 }} showsVerticalScrollIndicator={false}>
+                  <TouchableOpacity
+                    style={styles.billOptionItem}
+                    onPress={handleSplitBill}
                   >
-                    <Ionicons
-                      name="git-branch-outline"
-                      size={20}
-                      color={Theme.info}
-                    />
-                  </View>
-                  <Text style={styles.billOptionText}>Split Bill</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={styles.billOptionItem}
-                  onPress={handleMergeBill}
-                >
-                  <View
-                    style={[
-                      styles.billOptionIcon,
-                      { backgroundColor: Theme.warningBg },
-                    ]}
-                  >
-                    <Ionicons
-                      name="layers-outline"
-                      size={20}
-                      color={Theme.warning}
-                    />
-                  </View>
-                  <Text style={styles.billOptionText}>Merge Bill</Text>
-                </TouchableOpacity>
-
-
-                <TouchableOpacity
-                  style={styles.billOptionItem}
-                  onPress={handlePrintCheckoutBill}
-                >
-                  <View
-                    style={[
-                      styles.billOptionIcon,
-                      { backgroundColor: Theme.successBg },
-                    ]}
-                  >
-                    <Ionicons
-                      name="receipt-outline"
-                      size={20}
-                      color={Theme.success}
-                    />
-                  </View>
-                  <Text style={styles.billOptionText}>Print Bill</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={styles.billOptionItem}
-                  onPress={handleReprintKOT}
-                >
-                  <View
-                    style={[
-                      styles.billOptionIcon,
-                      { backgroundColor: Theme.primaryLight },
-                    ]}
-                  >
-                    <Ionicons
-                      name="print-outline"
-                      size={20}
-                      color={Theme.primary}
-                    />
-                  </View>
-                  <Text style={styles.billOptionText}>Reprint KOT</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={styles.billOptionItem}
-                  onPress={handleReduceServiceCharge}
-                  disabled={isReducingSC}
-                >
-                  <View
-                    style={[
-                      styles.billOptionIcon,
-                      { backgroundColor: scReduced ? "#f0fdf4" : "#fef9c3" },
-                    ]}
-                  >
-                    {isReducingSC ? (
-                      <ActivityIndicator size={18} color="#ca8a04" />
-                    ) : (
-                      <MaterialCommunityIcons
-                        name="percent-outline"
+                    <View
+                      style={[
+                        styles.billOptionIcon,
+                        { backgroundColor: Theme.infoBg },
+                      ]}
+                    >
+                      <Ionicons
+                        name="git-branch-outline"
                         size={20}
-                        color={scReduced ? "#16a34a" : "#ca8a04"}
+                        color={Theme.info}
                       />
-                    )}
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.billOptionText}>
-                      {scReduced ? "Restore Service Charge" : "Remove Service Charge"}
-                    </Text>
-                    {scReduced && (
-                      <Text style={{ fontSize: 11, color: "#16a34a", marginTop: 2, fontFamily: Fonts.medium }}>
-                        Service charge set to 0.00 (Tap to restore)
+                    </View>
+                    <Text style={styles.billOptionText}>Split Bill</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={styles.billOptionItem}
+                    onPress={handleMergeBill}
+                  >
+                    <View
+                      style={[
+                        styles.billOptionIcon,
+                        { backgroundColor: Theme.warningBg },
+                      ]}
+                    >
+                      <Ionicons
+                        name="layers-outline"
+                        size={20}
+                        color={Theme.warning}
+                      />
+                    </View>
+                    <Text style={styles.billOptionText}>Merge Bill</Text>
+                  </TouchableOpacity>
+
+
+                  <TouchableOpacity
+                    style={styles.billOptionItem}
+                    onPress={handlePrintCheckoutBill}
+                  >
+                    <View
+                      style={[
+                        styles.billOptionIcon,
+                        { backgroundColor: Theme.successBg },
+                      ]}
+                    >
+                      <Ionicons
+                        name="receipt-outline"
+                        size={20}
+                        color={Theme.success}
+                      />
+                    </View>
+                    <Text style={styles.billOptionText}>Print Bill</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={styles.billOptionItem}
+                    onPress={handleReprintKOT}
+                  >
+                    <View
+                      style={[
+                        styles.billOptionIcon,
+                        { backgroundColor: Theme.primaryLight },
+                      ]}
+                    >
+                      <Ionicons
+                        name="print-outline"
+                        size={20}
+                        color={Theme.primary}
+                      />
+                    </View>
+                    <Text style={styles.billOptionText}>Reprint KOT</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={styles.billOptionItem}
+                    onPress={handleReduceServiceCharge}
+                    disabled={isReducingSC}
+                  >
+                    <View
+                      style={[
+                        styles.billOptionIcon,
+                        { backgroundColor: scReduced ? "#f0fdf4" : "#fef9c3" },
+                      ]}
+                    >
+                      {isReducingSC ? (
+                        <ActivityIndicator size={18} color="#ca8a04" />
+                      ) : (
+                        <MaterialCommunityIcons
+                          name="percent-outline"
+                          size={20}
+                          color={scReduced ? "#16a34a" : "#ca8a04"}
+                        />
+                      )}
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.billOptionText}>
+                        {scReduced ? "Restore Service Charge" : "Remove Service Charge"}
                       </Text>
-                    )}
-                  </View>
-                </TouchableOpacity>
+                      {scReduced && (
+                        <Text style={{ fontSize: 11, color: "#16a34a", marginTop: 2, fontFamily: Fonts.medium }}>
+                          Service charge set to 0.00 (Tap to restore)
+                        </Text>
+                      )}
+                    </View>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={styles.billOptionItem}
+                    onPress={handleToggleTakeawayCharge}
+                    disabled={isApplyingTakeaway}
+                  >
+                    <View
+                      style={[
+                        styles.billOptionIcon,
+                        { backgroundColor: takeawayChargeApplied ? "#f0fdf4" : "#fef9c3" },
+                      ]}
+                    >
+                      {isApplyingTakeaway ? (
+                        <ActivityIndicator size={18} color="#ca8a04" />
+                      ) : (
+                        <Ionicons
+                          name="bicycle-outline"
+                          size={20}
+                          color={takeawayChargeApplied ? "#16a34a" : "#ca8a04"}
+                        />
+                      )}
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.billOptionText}>
+                        {takeawayChargeApplied ? "Remove Takeaway Charge" : "Add Takeaway Charge"}
+                      </Text>
+                      {takeawayChargeApplied && (
+                        <Text style={{ fontSize: 11, color: "#16a34a", marginTop: 2, fontFamily: Fonts.medium }}>
+                          Takeaway charge set to {currencySymbol}{takeawayChargeAmt.toFixed(2)}
+                        </Text>
+                      )}
+                    </View>
+                  </TouchableOpacity>
+                </ScrollView>
               </View>
             </TouchableWithoutFeedback>
           </View>

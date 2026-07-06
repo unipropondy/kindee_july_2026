@@ -6,6 +6,9 @@
     "paths": {
       "@/*": [
         "./*"
+      ],
+      "@unipro/customer-display": [
+        "../packages/customer-display/src/index.ts"
       ]
     }
   },

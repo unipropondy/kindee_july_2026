@@ -45,6 +45,7 @@ router.post("/:id", async (req, res) => {
       .input("HoldOvertimeMinutes", sql.Int, s.HoldOvertimeMinutes !== undefined && s.HoldOvertimeMinutes !== null ? s.HoldOvertimeMinutes : 30)
       .input("ServiceChargePercentage", sql.Decimal(18, 2), s.ServiceChargePercentage !== undefined && s.ServiceChargePercentage !== null ? s.ServiceChargePercentage : 0)
       .input("SVCIdentification", sql.Bit, s.SVCIdentification !== undefined && s.SVCIdentification !== null ? (s.SVCIdentification ? 1 : 0) : 1)
+      .input("TakeawayCharges", sql.Decimal(18, 2), s.TakeawayCharges !== undefined && s.TakeawayCharges !== null ? s.TakeawayCharges : 0)
       .query(`
         IF EXISTS (SELECT 1 FROM CompanySettings WHERE Id = '1')
         BEGIN
@@ -68,13 +69,14 @@ router.post("/:id", async (req, res) => {
             HoldOvertimeMinutes = @HoldOvertimeMinutes,
             ServiceChargePercentage = @ServiceChargePercentage,
             SVCIdentification = @SVCIdentification,
+            TakeawayCharges = @TakeawayCharges,
             UpdatedOn = GETDATE()
           WHERE Id = '1'
         END
         ELSE
         BEGIN
-          INSERT INTO CompanySettings (Id, CompanyName, Address, GSTNo, GSTPercentage, Phone, Email, CashierName, Currency, CurrencySymbol, CompanyLogoUrl, HalalLogoUrl, PrinterIP, ShowCompanyLogo, ShowHalalLogo, TaxMode, WaiterRequired, HoldOvertimeMinutes, ServiceChargePercentage, SVCIdentification, UpdatedOn)
-          VALUES ('1', @CompanyName, @Address, @GSTNo, @GSTPercentage, @Phone, @Email, @CashierName, @Currency, @CurrencySymbol, @CompanyLogoUrl, @HalalLogoUrl, @PrinterIP, @ShowCompanyLogo, @ShowHalalLogo, @TaxMode, @WaiterRequired, @HoldOvertimeMinutes, @ServiceChargePercentage, @SVCIdentification, GETDATE())
+          INSERT INTO CompanySettings (Id, CompanyName, Address, GSTNo, GSTPercentage, Phone, Email, CashierName, Currency, CurrencySymbol, CompanyLogoUrl, HalalLogoUrl, PrinterIP, ShowCompanyLogo, ShowHalalLogo, TaxMode, WaiterRequired, HoldOvertimeMinutes, ServiceChargePercentage, SVCIdentification, TakeawayCharges, UpdatedOn)
+          VALUES ('1', @CompanyName, @Address, @GSTNo, @GSTPercentage, @Phone, @Email, @CashierName, @Currency, @CurrencySymbol, @CompanyLogoUrl, @HalalLogoUrl, @PrinterIP, @ShowCompanyLogo, @ShowHalalLogo, @TaxMode, @WaiterRequired, @HoldOvertimeMinutes, @ServiceChargePercentage, @SVCIdentification, @TakeawayCharges, GETDATE())
         END
       `);
 

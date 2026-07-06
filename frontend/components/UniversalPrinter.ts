@@ -1755,7 +1755,8 @@ class UniversalPrinter {
     const effectiveSCPercentage = serviceChargeAmount > 0 && currentSubtotal > 0
       ? Math.round((serviceChargeAmount / currentSubtotal) * 100)
       : scPercentage;
-    const taxableAmount = currentSubtotal + serviceChargeAmount;
+    const takeawayCharge = parseFloat(String(saleData.takeawayCharge || 0)) || 0;
+    const taxableAmount = currentSubtotal + serviceChargeAmount + takeawayCharge;
     const gstAmountRaw = hasGST ? taxableAmount * (gstRate / 100) : 0;
     const gstAmount = Math.round(gstAmountRaw * 100) / 100;
     
@@ -1773,6 +1774,10 @@ class UniversalPrinter {
 
     if (hasSC) {
       text += this.formatTwoCols48(allItemsHaveSC ? "Service Charge:" : "Item Service Charge:", `${symbol}${serviceChargeAmount.toFixed(2)}`);
+    }
+
+    if (takeawayCharge > 0) {
+      text += this.formatTwoCols48("Takeaway Charge:", `${symbol}${takeawayCharge.toFixed(2)}`);
     }
 
     if (hasGST && gstAmount > 0) {

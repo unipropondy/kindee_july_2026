@@ -222,6 +222,7 @@ router.get("/all", async (req, res) => {
             sh.DiscountType as DiscountType,
             ISNULL(sh.ServiceCharge, 0) as ServiceCharge,
             ISNULL(sh.TotalTax, 0) as TotalTax,
+            ISNULL(sh.TakeawayCharge, 0) as TakeawayCharge,
             ISNULL(sts.ReceiptCount, 0) as ReceiptCount,
             ISNULL(sh.VoidItemQty, 0) as VoidQty,
             ISNULL(sh.VoidItemAmount, 0) as VoidAmount,
@@ -268,6 +269,7 @@ router.get("/all", async (req, res) => {
             NULL AS DiscountType,
             0 AS ServiceCharge,
             0 AS TotalTax,
+            0 AS TakeawayCharge,
             1 AS ReceiptCount,
             0 AS VoidQty,
             0 AS VoidAmount,
@@ -1559,6 +1561,7 @@ router.post("/save", async (req, res) => {
       .input("VoidItemAmount", sql.Money, voidAmount)
       .input("RoundedBy", sql.Money, roundOff || 0)
       .input("ServiceCharge", sql.Money, req.body.serviceCharge || 0)
+      .input("TakeawayCharge", sql.Decimal(18, 2), req.body.takeawayCharge || 0)
       .input("PayModeCode", sql.Int, payModeCode)
       .input("DailySeq", sql.Int, dailySequence || 0)
       .input("InvoiceOrderId", sql.UniqueIdentifier, guidOrderId)
@@ -1577,12 +1580,12 @@ router.post("/save", async (req, res) => {
           SettlementID, LastSettlementDate, LastDayEndDate, SubTotal, TotalTax, DiscountAmount, DiscountType, 
           BillNo, OrderType, TableNo, Section, MemberId, CashierID, BusinessUnitId, 
           SysAmount, ManualAmount, CreatedBy, CreatedOn, SER_NAME, MobileNo, 
-          VoidItemQty, VoidItemAmount, RoundedBy, ServiceCharge, GuestName, Pax
+          VoidItemQty, VoidItemAmount, RoundedBy, ServiceCharge, GuestName, Pax, TakeawayCharge
         ) VALUES (
           @SettlementID, GETDATE(), GETDATE(), @SubTotal, @TotalTax, @DiscountAmount, @DiscountType, 
           @BillNo, @OrderType, @TableNo, @Section, @MemberId, @CashierID, @BusinessUnitId, 
           @SysAmount, @ManualAmount, @CreatedBy, GETDATE(), @SER_NAME, @MobileNo, 
-          @VoidItemQty, @VoidItemAmount, @RoundedBy, @ServiceCharge, @GuestName, @Pax
+          @VoidItemQty, @VoidItemAmount, @RoundedBy, @ServiceCharge, @GuestName, @Pax, @TakeawayCharge
         );
 
         -- 2. Insert into RestaurantInvoice (Perfect Sync)
@@ -2044,6 +2047,7 @@ router.post("/save", async (req, res) => {
             .input("RoundedBy", sql.Money, roundOff || 0)
             .input("isTakeaway", sql.Bit, (orderType === "TAKEAWAY" || !tableId || tableId === "undefined" || tableId === "null" || String(tableId).startsWith("TAKEAWAY")) ? 1 : 0)
             .input("ServiceCharge", sql.Decimal(18, 2), req.body.serviceCharge || 0)
+            .input("TakeawayCharge", sql.Decimal(18, 2), req.body.takeawayCharge || 0)
             .query(`
               DECLARE @Section INT = 4;
               DECLARE @PriorityCode INT = NULL;
@@ -2052,12 +2056,12 @@ router.post("/save", async (req, res) => {
               FROM RestaurantOrderCur r
               LEFT JOIN TableMaster t ON r.Tableno = t.TableNumber
               WHERE r.OrderNumber = @orderNo;
-
+ 
               IF @Section = 1 SET @PriorityCode = 1
               ELSE IF @Section = 2 SET @PriorityCode = 2
               ELSE IF @Section = 3 SET @PriorityCode = 3
               ELSE IF @Section = 4 SET @PriorityCode = 4
-
+ 
               -- Ensure parent order has the correct final TotalAmount, RoundedBy, and Discounts in Cur before moving
               UPDATE RestaurantOrderCur 
               SET TotalAmount = @totalAmt,
@@ -2071,43 +2075,44 @@ router.post("/save", async (req, res) => {
                   DiscountRemarks = @DiscountRemarks,
                   IsTakeAway = @isTakeaway,
                   ServiceCharge = @ServiceCharge,
+                  TakeawayCharge = @TakeawayCharge,
                   isGuestMeal = ISNULL((SELECT TOP 1 isGuestMeal FROM [dbo].[Discount] WHERE DiscountId = @DiscountId), 0)
               WHERE OrderNumber = @orderNo;
-
+ 
               -- Move Header (History) - For Parent Order
               IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('RestaurantOrder') AND name = 'TotalAmount')
               BEGIN
                  INSERT INTO RestaurantOrder (
                    OrderId, OrderNumber, OrderDateTime, Tableno, StatusCode, CreatedBy, CreatedOn, MobileNo, BusinessUnitId, isOrderClosed, PriorityCode,
-                   TotalLineItemAmount, TotalLineItemDiscountAmount, DiscountAmount, DiscountPercentage, TotalDiscountAmount, RoundedBy, isGuestMeal, DiscountId, DiscountRemarks, IsTakeAway, TimeBilled, ServiceCharge
+                   TotalLineItemAmount, TotalLineItemDiscountAmount, DiscountAmount, DiscountPercentage, TotalDiscountAmount, RoundedBy, isGuestMeal, DiscountId, DiscountRemarks, IsTakeAway, TimeBilled, ServiceCharge, TakeawayCharge
                  )
                  SELECT 
                    OrderId, OrderNumber, OrderDateTime, Tableno, 3, CreatedBy, CreatedOn, MobileNo, BusinessUnitId, 1, ISNULL(PriorityCode, @PriorityCode),
-                   TotalLineItemAmount, TotalLineItemDiscountAmount, DiscountAmount, DiscountPercentage, TotalDiscountAmount, RoundedBy, isGuestMeal, DiscountId, DiscountRemarks, IsTakeAway, GETDATE(), ServiceCharge
+                   TotalLineItemAmount, TotalLineItemDiscountAmount, DiscountAmount, DiscountPercentage, TotalDiscountAmount, RoundedBy, isGuestMeal, DiscountId, DiscountRemarks, IsTakeAway, GETDATE(), ServiceCharge, TakeawayCharge
                  FROM RestaurantOrderCur WHERE OrderNumber = @orderNo;
               END
               ELSE
               BEGIN
                  INSERT INTO RestaurantOrder (
                    OrderId, OrderNumber, OrderDateTime, Tableno, StatusCode, CreatedBy, CreatedOn, MobileNo, BusinessUnitId, isOrderClosed, PriorityCode, TotalAmount,
-                   TotalLineItemAmount, TotalLineItemDiscountAmount, DiscountAmount, DiscountPercentage, TotalDiscountAmount, RoundedBy, isGuestMeal, DiscountId, DiscountRemarks, IsTakeAway, TimeBilled, ServiceCharge
+                   TotalLineItemAmount, TotalLineItemDiscountAmount, DiscountAmount, DiscountPercentage, TotalDiscountAmount, RoundedBy, isGuestMeal, DiscountId, DiscountRemarks, IsTakeAway, TimeBilled, ServiceCharge, TakeawayCharge
                  )
                  SELECT 
                    OrderId, OrderNumber, OrderDateTime, Tableno, 3, CreatedBy, CreatedOn, MobileNo, BusinessUnitId, 1, ISNULL(PriorityCode, @PriorityCode), TotalAmount,
-                   TotalLineItemAmount, TotalLineItemDiscountAmount, DiscountAmount, DiscountPercentage, TotalDiscountAmount, RoundedBy, isGuestMeal, DiscountId, DiscountRemarks, IsTakeAway, GETDATE(), ServiceCharge
+                   TotalLineItemAmount, TotalLineItemDiscountAmount, DiscountAmount, DiscountPercentage, TotalDiscountAmount, RoundedBy, isGuestMeal, DiscountId, DiscountRemarks, IsTakeAway, GETDATE(), ServiceCharge, TakeawayCharge
                  FROM RestaurantOrderCur WHERE OrderNumber = @orderNo;
               END
-
+ 
               -- Move Header (History) - For Child Merged Orders (so they aren't considered 'missing' bills)
               IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('RestaurantOrder') AND name = 'TotalAmount')
               BEGIN
                  INSERT INTO RestaurantOrder (
                    OrderId, OrderNumber, OrderDateTime, Tableno, StatusCode, CreatedBy, CreatedOn, MobileNo, BusinessUnitId, isOrderClosed, PriorityCode,
-                   TotalLineItemAmount, TotalLineItemDiscountAmount, DiscountAmount, DiscountPercentage, TotalDiscountAmount, RoundedBy, isGuestMeal, DiscountId, DiscountRemarks, IsTakeAway, TimeBilled, ServiceCharge
+                   TotalLineItemAmount, TotalLineItemDiscountAmount, DiscountAmount, DiscountPercentage, TotalDiscountAmount, RoundedBy, isGuestMeal, DiscountId, DiscountRemarks, IsTakeAway, TimeBilled, ServiceCharge, TakeawayCharge
                  )
                  SELECT 
                    r.OrderId, r.OrderNumber, r.OrderDateTime, r.Tableno, 3, r.CreatedBy, r.CreatedOn, r.MobileNo, r.BusinessUnitId, 1, ISNULL(r.PriorityCode, @PriorityCode),
-                   r.TotalLineItemAmount, r.TotalLineItemDiscountAmount, r.DiscountAmount, r.DiscountPercentage, r.TotalDiscountAmount, r.RoundedBy, r.isGuestMeal, r.DiscountId, r.DiscountRemarks, r.IsTakeAway, GETDATE(), r.ServiceCharge
+                   r.TotalLineItemAmount, r.TotalLineItemDiscountAmount, r.DiscountAmount, r.DiscountPercentage, r.TotalDiscountAmount, r.RoundedBy, r.isGuestMeal, r.DiscountId, r.DiscountRemarks, r.IsTakeAway, GETDATE(), r.ServiceCharge, r.TakeawayCharge
                  FROM RestaurantOrderCur r
                  INNER JOIN OrderMergeHistory omh ON r.OrderId = omh.ChildOrderId
                  WHERE omh.ParentOrderId = (SELECT TOP 1 OrderId FROM RestaurantOrderCur WHERE OrderNumber = @orderNo)
@@ -2117,11 +2122,11 @@ router.post("/save", async (req, res) => {
               BEGIN
                  INSERT INTO RestaurantOrder (
                    OrderId, OrderNumber, OrderDateTime, Tableno, StatusCode, CreatedBy, CreatedOn, MobileNo, BusinessUnitId, isOrderClosed, PriorityCode, TotalAmount,
-                   TotalLineItemAmount, TotalLineItemDiscountAmount, DiscountAmount, DiscountPercentage, TotalDiscountAmount, RoundedBy, isGuestMeal, DiscountId, DiscountRemarks, IsTakeAway, TimeBilled, ServiceCharge
+                   TotalLineItemAmount, TotalLineItemDiscountAmount, DiscountAmount, DiscountPercentage, TotalDiscountAmount, RoundedBy, isGuestMeal, DiscountId, DiscountRemarks, IsTakeAway, TimeBilled, ServiceCharge, TakeawayCharge
                  )
                  SELECT 
                    r.OrderId, r.OrderNumber, r.OrderDateTime, r.Tableno, 3, r.CreatedBy, r.CreatedOn, r.MobileNo, r.BusinessUnitId, 1, ISNULL(r.PriorityCode, @PriorityCode), 0,
-                   r.TotalLineItemAmount, r.TotalLineItemDiscountAmount, r.DiscountAmount, r.DiscountPercentage, r.TotalDiscountAmount, r.RoundedBy, r.isGuestMeal, r.DiscountId, r.DiscountRemarks, r.IsTakeAway, GETDATE(), r.ServiceCharge
+                   r.TotalLineItemAmount, r.TotalLineItemDiscountAmount, r.DiscountAmount, r.DiscountPercentage, r.TotalDiscountAmount, r.RoundedBy, r.isGuestMeal, r.DiscountId, r.DiscountRemarks, r.IsTakeAway, GETDATE(), r.ServiceCharge, r.TakeawayCharge
                  FROM RestaurantOrderCur r
                  INNER JOIN OrderMergeHistory omh ON r.OrderId = omh.ChildOrderId
                  WHERE omh.ParentOrderId = (SELECT TOP 1 OrderId FROM RestaurantOrderCur WHERE OrderNumber = @orderNo)

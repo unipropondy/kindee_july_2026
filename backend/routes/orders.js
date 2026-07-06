@@ -2206,4 +2206,85 @@ router.get("/:orderId/sc-override", async (req, res) => {
   }
 });
 
+// Self-healing: adds TakeawayCharge column if it doesn't exist to RestaurantOrderCur and RestaurantOrder
+router.post("/apply-takeaway-charge", async (req, res) => {
+  try {
+    const { orderId, apply } = req.body; // apply = true to add takeaway charge, false to remove
+    if (!orderId) return res.status(400).json({ error: "Missing orderId" });
+    const pool = await poolPromise;
+
+    // 🔧 Self-healing: ensure columns exist
+    await pool.request().query(`
+      IF NOT EXISTS (
+        SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_NAME = 'RestaurantOrderCur' AND COLUMN_NAME = 'TakeawayCharge'
+      )
+      ALTER TABLE RestaurantOrderCur ADD TakeawayCharge DECIMAL(18, 2) DEFAULT 0;
+      
+      IF NOT EXISTS (
+        SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_NAME = 'RestaurantOrder' AND COLUMN_NAME = 'TakeawayCharge'
+      )
+      ALTER TABLE RestaurantOrder ADD TakeawayCharge DECIMAL(18, 2) DEFAULT 0;
+    `);
+
+    let chargeValue = 0;
+    if (apply) {
+      // Get TakeawayCharges from CompanySettings
+      const settingsRes = await pool.request().query("SELECT TOP 1 ISNULL(TakeawayCharges, 0) AS TakeawayCharges FROM CompanySettings WHERE Id = '1'");
+      chargeValue = parseFloat(settingsRes.recordset[0]?.TakeawayCharges) || 0;
+    }
+
+    await pool
+      .request()
+      .input("orderNo", sql.NVarChar(50), String(orderId).trim())
+      .input("charge", sql.Decimal(18, 2), chargeValue)
+      .query(`
+        UPDATE RestaurantOrderCur
+        SET TakeawayCharge = @charge, ModifiedOn = GETDATE()
+        WHERE OrderNumber = @orderNo
+          AND (isOrderClosed = 0 OR isOrderClosed IS NULL)
+      `);
+
+    res.json({ success: true, takeawayCharge: chargeValue });
+  } catch (err) {
+    console.error("❌ apply-takeaway-charge Error:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET the current takeaway charge status for an order
+router.get("/:orderId/takeaway-charge", async (req, res) => {
+  try {
+    const { orderId } = req.params;
+    if (!orderId) return res.status(400).json({ error: "Missing orderId" });
+    const pool = await poolPromise;
+
+    // Check column exists first
+    const colCheck = await pool.request().query(`
+      SELECT 1 AS HasCol FROM INFORMATION_SCHEMA.COLUMNS
+      WHERE TABLE_NAME = 'RestaurantOrderCur' AND COLUMN_NAME = 'TakeawayCharge'
+    `);
+    if (!colCheck.recordset.length) {
+      return res.json({ takeawayCharge: 0 });
+    }
+
+    const result = await pool
+      .request()
+      .input("orderNo", sql.NVarChar(50), String(orderId).trim())
+      .query(`
+        SELECT TOP 1 ISNULL(TakeawayCharge, 0) AS TakeawayCharge
+        FROM RestaurantOrderCur
+        WHERE OrderNumber = @orderNo
+          AND (isOrderClosed = 0 OR isOrderClosed IS NULL)
+      `);
+
+    const takeawayCharge = parseFloat(result.recordset[0]?.TakeawayCharge) || 0;
+    res.json({ takeawayCharge });
+  } catch (err) {
+    console.error("❌ takeaway-charge GET Error:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;

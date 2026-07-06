@@ -47,6 +47,11 @@ export default function CompanySettingsScreen() {
   const [isUnlocked, setIsUnlocked] = useState(false);
   const [verifying, setVerifying] = useState(false);
 
+  const [localTakeawayCharges, setLocalTakeawayCharges] = useState<string>('');
+  const [localGstPercentage, setLocalGstPercentage] = useState<string>('');
+  const [localServiceChargePercentage, setLocalServiceChargePercentage] = useState<string>('');
+  const [hasInitializedLocal, setHasInitializedLocal] = useState(false);
+
   const router = useRouter();
   const { showToast } = useToast();
 
@@ -84,6 +89,15 @@ export default function CompanySettingsScreen() {
     };
     load();
   }, []);
+
+  useEffect(() => {
+    if (settings && !hasInitializedLocal) {
+      setLocalTakeawayCharges(String(settings.takeawayCharges ?? 0));
+      setLocalGstPercentage(String(settings.gstPercentage ?? 0));
+      setLocalServiceChargePercentage(String(settings.serviceChargePercentage ?? 0));
+      setHasInitializedLocal(true);
+    }
+  }, [settings, hasInitializedLocal]);
 
   const fetchKitchenPrinters = async () => {
     try {
@@ -639,8 +653,12 @@ export default function CompanySettingsScreen() {
                 <Text style={styles.inputLabel}>GST (%)</Text>
                 <TextInput 
                   style={styles.input}
-                  value={String(settings.gstPercentage ?? 0)}
-                  onChangeText={(val) => { updateSettings({ gstPercentage: parseFloat(val) || 0 }); }}
+                  value={localGstPercentage}
+                  onChangeText={(val) => {
+                    setLocalGstPercentage(val);
+                    const parsed = parseFloat(val);
+                    updateSettings({ gstPercentage: isNaN(parsed) ? 0 : parsed });
+                  }}
                   placeholder="9.0"
                   placeholderTextColor={Theme.textMuted}
                   keyboardType="numeric"
@@ -653,14 +671,32 @@ export default function CompanySettingsScreen() {
                 <Text style={styles.inputLabel}>Service Charge (%)</Text>
                 <TextInput 
                   style={styles.input}
-                  value={String(settings.serviceChargePercentage ?? 0)}
-                  onChangeText={(val) => { updateSettings({ serviceChargePercentage: parseFloat(val) || 0 }); }}
+                  value={localServiceChargePercentage}
+                  onChangeText={(val) => {
+                    setLocalServiceChargePercentage(val);
+                    const parsed = parseFloat(val);
+                    updateSettings({ serviceChargePercentage: isNaN(parsed) ? 0 : parsed });
+                  }}
                   placeholder="10.0"
                   placeholderTextColor={Theme.textMuted}
                   keyboardType="numeric"
                 />
               </View>
-              <View style={[styles.inputGroup, { flex: 1 }]} />
+              <View style={[styles.inputGroup, { flex: 1 }]}>
+                <Text style={styles.inputLabel}>Takeaway Charge</Text>
+                <TextInput 
+                  style={styles.input}
+                  value={localTakeawayCharges}
+                  onChangeText={(val) => {
+                    setLocalTakeawayCharges(val);
+                    const parsed = parseFloat(val);
+                    updateSettings({ takeawayCharges: isNaN(parsed) ? 0 : parsed });
+                  }}
+                  placeholder="0.30"
+                  placeholderTextColor={Theme.textMuted}
+                  keyboardType="numeric"
+                />
+              </View>
             </View>
 
             <View style={styles.row}>

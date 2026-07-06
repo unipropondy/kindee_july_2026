@@ -20,9 +20,10 @@ interface CompanySettings {
   cashierName: string;
   currency: string;
   currencySymbol: string;
-   companyLogo?: string;        // ✅ ADD THIS
+  companyLogo?: string;        // ✅ ADD THIS
   halalLogo?: string;          // ✅ ADD THIS
   printerIp?: string;          // ✅ ADD THIS
+  takeawayCharges?: number;    // ✅ ADD THIS
   showCompanyLogo?: boolean;   // ✅ ADD THIS
   showHalalLogo?: boolean; 
 }
@@ -206,7 +207,8 @@ static async loadSettings(userId?: string | number): Promise<CompanySettings> {
             PrinterIP: settings.printerIp || '', // ✅ ADDED
             ShowCompanyLogo: settings.showCompanyLogo ? 1 : 0,  // ✅ Simplified
             ShowHalalLogo: settings.showHalalLogo ? 1 : 0,      // ✅ Simplified
-            ServiceChargePercentage: settings.serviceChargePercentage || 0
+            ServiceChargePercentage: settings.serviceChargePercentage || 0,
+            TakeawayCharges: settings.takeawayCharges || 0
         };
         
         // ✅ Add timestamp to prevent caching
@@ -363,7 +365,8 @@ private static escapeHtml(str: string): string {
       serviceChargeAmount = scEligibleNet * (scPercentage / 100);
     }
 
-    const taxableAmount = currentSubtotal + serviceChargeAmount;
+    const takeawayCharge = parseFloat(String(saleData.takeawayCharge || 0)) || 0;
+    const taxableAmount = currentSubtotal + serviceChargeAmount + takeawayCharge;
     const hasSC = serviceChargeAmount > 0;
     const effectiveSCPercentage = serviceChargeAmount > 0 && currentSubtotal > 0
       ? Math.round((serviceChargeAmount / currentSubtotal) * 100)
@@ -792,6 +795,12 @@ private static escapeHtml(str: string): string {
              <div class="total-row">
                <span>${allItemsHaveSC ? 'Service Charge' : 'Item Service Charge'}:</span>
                <span>${currencySymbol}${serviceChargeAmount.toFixed(2)}</span>
+             </div>
+             ` : ''}
+             ${takeawayCharge > 0 ? `
+             <div class="total-row">
+               <span>Takeaway Charge:</span>
+               <span>${currencySymbol}${takeawayCharge.toFixed(2)}</span>
              </div>
              ` : ''}
              ${hasGST && gstAmount > 0 ? `

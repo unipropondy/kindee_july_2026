@@ -1448,6 +1448,7 @@ export default function SalesReport() {
         discountValue: discountValue,
         subTotal: Number(selectedOrder.SubTotal ?? 0),
         serviceCharge: Number(selectedOrder.ServiceCharge ?? 0),
+        takeawayCharge: Number(selectedOrder.TakeawayCharge ?? 0),
         payments: displayedPayments.map(p => ({
           payMode: p.PayModeName,
           payModeName: p.PayModeName,

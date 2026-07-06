@@ -102,16 +102,17 @@ router.get("/config/:DishId", async (req, res) => {
       .input("DishId", sql.UniqueIdentifier, DishId)
       .query(`
         SELECT
-          ComboGroupId,
-          GroupName,
-          DisplayOrder,
-          MinSelection,
-          MaxSelection,
-          IsMultiSelect
-        FROM ComboGroupMaster WITH (NOLOCK)
-        WHERE ParentComboDishId = @DishId
-          AND IsActive = 1
-        ORDER BY DisplayOrder ASC
+          cgm.ComboGroupId,
+          cgm.GroupName,
+          cgm.DisplayOrder,
+          cgm.MinSelection,
+          cgm.MaxSelection,
+          cgm.IsMultiSelect
+        FROM ComboGroupMaster cgm WITH (NOLOCK)
+        INNER JOIN ParentDishComboGroupMapping pdcgm WITH (NOLOCK) ON cgm.ComboGroupId = pdcgm.ComboGroupId
+        WHERE pdcgm.ParentDishId = @DishId
+          AND cgm.IsActive = 1
+        ORDER BY cgm.DisplayOrder ASC
       `);
 
     const groups = groupsResult.recordset;

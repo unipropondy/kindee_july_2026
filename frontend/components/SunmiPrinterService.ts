@@ -447,7 +447,10 @@ class SunmiPrinterService {
         const discAmt = Number(item.discountAmount ?? item.discount ?? 0);
         if (discAmt > 0) {
           const discType = item.discountType || "percentage";
-          const discStr = discType === "percentage" ? `-${discAmt}%` : `-${symbol}${discAmt.toFixed(2)}`;
+          const isCombo = item.isCombo === true || String(item.isCombo) === "1" || item.isCombo === 1;
+          const discountBasis = isCombo ? (item.basePrice ?? item.price ?? 0) : (item.price ?? 0);
+          const effectiveDisc = discType === "percentage" ? discAmt : Math.min(discAmt, discountBasis);
+          const discStr = discType === "percentage" ? `-${discAmt}%` : `-${symbol}${effectiveDisc.toFixed(2)}`;
           await SunmiModule.printText(formatter.left(`    Discount: ${discStr}`));
         }
       }
@@ -460,15 +463,17 @@ class SunmiPrinterService {
       (saleData.items || []).forEach((item: any) => {
         if (item.status === "VOIDED") return;
         const qtyNum = parseInt(String(item.qty || item.quantity || 1)) || 1;
+        const isCombo = item.isCombo === true || String(item.isCombo) === "1" || item.isCombo === 1;
+        const discountBasis = isCombo ? (item.basePrice ?? item.price ?? 0) : (item.price ?? 0);
         const baseTotal = (item.price || 0) * qtyNum;
         let itemDiscount = 0;
         const discAmt = Number(item.discountAmount ?? item.discount ?? 0);
         const discType = item.discountType || "percentage";
         if (discAmt > 0) {
           if (discType === "percentage") {
-            itemDiscount = baseTotal * (discAmt / 100);
+            itemDiscount = (discountBasis * (discAmt / 100)) * qtyNum;
           } else {
-            itemDiscount = discAmt * qtyNum;
+            itemDiscount = Math.min(discAmt, discountBasis) * qtyNum;
           }
         }
         grossTotal += baseTotal;
@@ -512,15 +517,17 @@ class SunmiPrinterService {
         (saleData.items || []).forEach((item: any) => {
           if (item.status === "VOIDED") return;
           const qtyNum = parseInt(String(item.qty || item.quantity || 1)) || 1;
+          const isCombo = item.isCombo === true || String(item.isCombo) === "1" || item.isCombo === 1;
+          const discountBasis = isCombo ? (item.basePrice ?? item.price ?? 0) : (item.price ?? 0);
           const baseTotal = (item.price || 0) * qtyNum;
           let itemDiscount = 0;
           const discAmt = Number(item.discountAmount ?? item.discount ?? 0);
           const discType = item.discountType || "percentage";
           if (discAmt > 0) {
             if (discType === "percentage") {
-              itemDiscount = baseTotal * (discAmt / 100);
+              itemDiscount = (discountBasis * (discAmt / 100)) * qtyNum;
             } else {
-              itemDiscount = discAmt * qtyNum;
+              itemDiscount = Math.min(discAmt, discountBasis) * qtyNum;
             }
           }
           const itemSubtotal = baseTotal - itemDiscount;

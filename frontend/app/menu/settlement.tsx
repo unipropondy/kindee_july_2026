@@ -3,6 +3,7 @@ import { Fonts } from "@/constants/Fonts";
 import { Theme } from "@/constants/theme";
 import { useAuthStore } from "@/stores/authStore";
 import { useGeneralSettingsStore } from "../../stores/generalSettingsStore";
+import { useToast } from "../../components/Toast";
 import { Ionicons } from "@expo/vector-icons";
 import axios from "axios";
 import * as Print from "expo-print";
@@ -20,6 +21,7 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
+  TouchableWithoutFeedback,
   useWindowDimensions,
   View,
 } from "react-native";
@@ -547,11 +549,59 @@ export default function SettlementScreen() {
   const { width } = useWindowDimensions();
   const isTablet = width >= 768;
   const enableCashDrawer = useGeneralSettingsStore(state => state.settings.enableCashDrawer);
+  const { showToast } = useToast();
 
   const [loading, setLoading] = useState(false);
   const [terminals, setTerminals] = useState<any[]>([]);
   const [selectedTerminal, setSelectedTerminal] = useState<string>("");
   const [showLov, setShowLov] = useState(false);
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+
+  const executeDayEnd = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_URL}/api/settlement/day-end`, {
+        method: "POST",
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          username: user?.userName || "admin"
+        })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        const AsyncStorage = require("@react-native-async-storage/async-storage").default;
+        await AsyncStorage.removeItem("selected_business_date");
+        showToast({
+          type: "success",
+          message: "Day Ended Successfully",
+          subtitle: "Report generated and business day closed."
+        });
+        router.replace("/(tabs)/category"); // Go back to Category
+      } else {
+        showToast({
+          type: "error",
+          message: "Day End Failed",
+          subtitle: data.error || "Failed to complete Day End."
+        });
+      }
+    } catch (err) {
+      console.error("Day End Error:", err);
+      showToast({
+        type: "error",
+        message: "Network Error",
+        subtitle: "Failed to connect to the server."
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDayEnd = () => {
+    setShowConfirmModal(true);
+  };
 
   const [totalSales, setTotalSales] = useState<any>({});
   const [payments, setPayments] = useState<any[]>([]);
@@ -1465,13 +1515,31 @@ const loadDishes = async () => {
             <Text style={styles.headerTitle}>Settlement</Text>
 
             {!isTablet && (
-              <TouchableOpacity
-                style={[styles.confirmBtn, { marginLeft: 'auto', paddingVertical: 6, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', gap: 6 }]}
-                onPress={handlePrintReport}
-              >
-                <Ionicons name="print-outline" size={16} color="#fff" />
-                <Text style={[styles.confirmBtnText, { fontSize: 12 }]}>Print</Text>
-              </TouchableOpacity>
+              <View style={{ marginLeft: 'auto', flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+                <TouchableOpacity
+                  style={[styles.confirmBtn, { paddingVertical: 6, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', gap: 6 }]}
+                  onPress={handlePrintReport}
+                >
+                  <Ionicons name="print-outline" size={16} color="#fff" />
+                  <Text style={[styles.confirmBtnText, { fontSize: 12 }]}>Print</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={{
+                    backgroundColor: "#ef4444",
+                    paddingVertical: 6,
+                    paddingHorizontal: 12,
+                    borderRadius: 10,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 6
+                  }}
+                  onPress={handleDayEnd}
+                >
+                  <Ionicons name="moon-outline" size={16} color="#fff" />
+                  <Text style={{ color: "#fff", fontFamily: Fonts.black, fontSize: 12 }}>Day End</Text>
+                </TouchableOpacity>
+              </View>
             )}
           </View>
 
@@ -1560,13 +1628,36 @@ const loadDishes = async () => {
           </View>
 
           {isTablet && (
-            <View style={{ flexDirection: 'row', gap: 10 }}>
+            <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
               <TouchableOpacity
                 style={[styles.confirmBtn, { paddingVertical: 8, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', gap: 6 }]}
                 onPress={handlePrintReport}
               >
                 <Ionicons name="print-outline" size={18} color="#fff" />
                 <Text style={styles.confirmBtnText}>Print Report</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={{
+                  backgroundColor: "#ef4444",
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 6,
+                  paddingVertical: 8,
+                  paddingHorizontal: 16,
+                  borderRadius: 10,
+                  shadowColor: "#000",
+                  shadowOffset: { width: 0, height: 2 },
+                  shadowOpacity: 0.1,
+                  shadowRadius: 3,
+                  elevation: 2,
+                  height: 38
+                }}
+                onPress={handleDayEnd}
+              >
+                <Ionicons name="moon-outline" size={18} color="#fff" />
+                <Text style={{ color: "#fff", fontSize: 13, fontFamily: Fonts.black }}>Day End</Text>
               </TouchableOpacity>
             </View>
           )}
@@ -1874,7 +1965,7 @@ const loadDishes = async () => {
                 <View style={{ flexDirection: "row", paddingVertical: 10, paddingHorizontal: 12, backgroundColor: "#F9FAFB", borderTopWidth: 1, borderTopColor: "#E5E7EB", alignItems: "center" }}>
                   <View style={{ flex: 2, alignItems: 'flex-end', paddingRight: 15 }}>
                     <Text style={{ fontFamily: Fonts.black, fontSize: 13, color: Theme.textSecondary }}>NET AMOUNT</Text>
-                  </View>
+</View>
                   <Text style={{ flex: 2, textAlign: "right", fontFamily: Fonts.black, fontSize: 14, color: (totalCashIn - totalCashOutSum) >= 0 ? Theme.success : Theme.danger }}>
                     {formatCurrency(totalCashIn - totalCashOutSum)}
                   </Text>
@@ -2310,6 +2401,114 @@ const loadDishes = async () => {
     </View>
   </View>
 </Modal>
+
+      {/* CUSTOM CONFIRM DAY END MODAL */}
+      <Modal
+        visible={showConfirmModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowConfirmModal(false)}
+      >
+        <TouchableOpacity 
+          style={{
+            flex: 1,
+            backgroundColor: "rgba(0,0,0,0.6)",
+            justifyContent: "center",
+            alignItems: "center",
+            padding: 20
+          }}
+          activeOpacity={1}
+          onPress={() => setShowConfirmModal(false)}
+        >
+          <TouchableWithoutFeedback>
+            <View 
+              style={{
+                width: "100%",
+                maxWidth: 420,
+                backgroundColor: Theme.bgCard || "#ffffff",
+                borderRadius: 24,
+                padding: 24,
+                alignItems: "center",
+                shadowColor: "#000",
+                shadowOffset: { width: 0, height: 4 },
+                shadowOpacity: 0.15,
+                shadowRadius: 12,
+                elevation: 5
+              }}
+            >
+              <View style={{
+                width: 56,
+                height: 56,
+                borderRadius: 28,
+                backgroundColor: "#fee2e2",
+                justifyContent: "center",
+                alignItems: "center",
+                marginBottom: 16
+              }}>
+                <Ionicons name="warning-outline" size={28} color="#ef4444" />
+              </View>
+
+              <Text style={{
+                fontFamily: Fonts.black,
+                fontSize: 20,
+                color: Theme.textPrimary || "#1c2d42",
+                marginBottom: 10,
+                textAlign: "center"
+              }}>
+                Confirm Day End
+              </Text>
+
+              <Text style={{
+                fontFamily: Fonts.medium,
+                fontSize: 14,
+                color: Theme.textSecondary || "#556e8a",
+                textAlign: "center",
+                lineHeight: 20,
+                marginBottom: 24
+              }}>
+                Are you sure you want to close the day? This will finalize all transactions and prepare for the next business day.
+              </Text>
+
+              <View style={{ flexDirection: "row", gap: 12, width: "100%" }}>
+                <TouchableOpacity
+                  style={{
+                    flex: 1,
+                    height: 48,
+                    borderRadius: 14,
+                    backgroundColor: Theme.bgMuted || "#f1f5f9",
+                    justifyContent: "center",
+                    alignItems: "center"
+                  }}
+                  onPress={() => setShowConfirmModal(false)}
+                >
+                  <Text style={{ fontFamily: Fonts.bold, fontSize: 15, color: Theme.textPrimary || "#1c2d42" }}>
+                    Cancel
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={{
+                    flex: 1,
+                    height: 48,
+                    borderRadius: 14,
+                    backgroundColor: "#ef4444",
+                    justifyContent: "center",
+                    alignItems: "center"
+                  }}
+                  onPress={() => {
+                    setShowConfirmModal(false);
+                    executeDayEnd();
+                  }}
+                >
+                  <Text style={{ fontFamily: Fonts.bold, fontSize: 15, color: "#fff" }}>
+                    Confirm
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </TouchableWithoutFeedback>
+        </TouchableOpacity>
+      </Modal>
 
     </View>
   );

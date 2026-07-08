@@ -2,8 +2,32 @@ const express = require("express");
 const router = express.Router();
 const { authenticateToken } = require("../middleware/auth");
 router.use(authenticateToken);
-const sql = require("mssql");
+
 const { poolPromise } = require("../config/db");
+
+router.use(async (req, res, next) => {
+  try {
+    const pool = await poolPromise;
+    const activeDayRes = await pool.request().query("SELECT TOP 1 StartDate FROM DateEntry ORDER BY CreatedDate DESC");
+    if (activeDayRes.recordset.length > 0) {
+      const activeStartDate = activeDayRes.recordset[0].StartDate;
+      const formattedStartDate = activeStartDate instanceof Date 
+        ? activeStartDate.toISOString().split("T")[0] 
+        : activeStartDate;
+      
+      if (formattedStartDate) {
+        req.query.startDate = formattedStartDate;
+        req.query.endDate = formattedStartDate;
+        req.query.date = formattedStartDate;
+      }
+    }
+  } catch (err) {
+    console.error("Error in sales report active date middleware:", err);
+  }
+  next();
+});
+
+const sql = require("mssql");
 const { runInTransaction } = require("../utils/transactionHelper");
 const { getActiveOrganization } = require("../utils/organizationHelper");
 const { processSplitPayments } = require("../services/payment.service");
@@ -73,9 +97,24 @@ const getReportDateRange = (req) => {
   return { start, end };
 };
 
+const resolveBusinessDateColumn = (col) => {
+  const cleanCol = String(col).trim();
+  if (cleanCol.includes("LastSettlementDate")) {
+    const prefix = cleanCol.includes(".") ? cleanCol.split(".")[0] + "." : "";
+    return `${prefix}start_date`;
+  }
+  if (cleanCol.includes("ptd.CreatedDate") || cleanCol.includes("ptd.CreatedOn")) {
+    return `ptd.CreatedDate`;
+  }
+  if (cleanCol === "InvoiceDate") {
+    return `start_date`;
+  }
+  return cleanCol;
+};
+
 const getReportDateWhereSql = (filter = "daily", saleDateColumn = "sh.LastSettlementDate", date = null, startDate = null, endDate = null) => {
-  // Completely for Singapore timezone (SGT, UTC+8).
-  // Database stores local SGT timestamps natively (via GETDATE() or local server time).
+  saleDateColumn = resolveBusinessDateColumn(saleDateColumn);
+
   if (String(filter).toLowerCase() === "custom" && startDate && endDate) {
     return getReportDateWhereSqlForRange(startDate, endDate, saleDateColumn);
   }
@@ -85,22 +124,22 @@ const getReportDateWhereSql = (filter = "daily", saleDateColumn = "sh.LastSettle
 
   switch (String(filter).toLowerCase()) {
     case "weekly":
-      return `${saleDateColumn} >= DATEADD(DAY, -6, CAST(${safeTargetDate} AS DATETIME)) AND ${saleDateColumn} < DATEADD(DAY, 1, CAST(${safeTargetDate} AS DATETIME))`;
+      return `CAST(${saleDateColumn} AS DATE) >= DATEADD(DAY, -6, ${safeTargetDate}) AND CAST(${saleDateColumn} AS DATE) <= ${safeTargetDate}`;
     case "monthly":
-      return `MONTH(CAST(${saleDateColumn} AS DATETIME)) = MONTH(${safeTargetDate}) AND YEAR(CAST(${saleDateColumn} AS DATETIME)) = YEAR(${safeTargetDate})`;
+      return `MONTH(CAST(${saleDateColumn} AS DATE)) = MONTH(${safeTargetDate}) AND YEAR(CAST(${saleDateColumn} AS DATE)) = YEAR(${safeTargetDate})`;
     case "yearly":
-      return `${saleDateColumn} >= DATEADD(YEAR, -1, CAST(${safeTargetDate} AS DATETIME)) AND ${saleDateColumn} < DATEADD(DAY, 1, CAST(${safeTargetDate} AS DATETIME))`;
+      return `CAST(${saleDateColumn} AS DATE) >= DATEADD(YEAR, -1, ${safeTargetDate}) AND CAST(${saleDateColumn} AS DATE) <= ${safeTargetDate}`;
     case "daily":
     default:
-      const sgtStart = `CAST(${safeTargetDate} AS DATETIME)`;
-      return `${saleDateColumn} >= ${sgtStart} AND ${saleDateColumn} < DATEADD(DAY, 1, ${sgtStart})`;
+      return `CAST(${saleDateColumn} AS DATE) = ${safeTargetDate}`;
   }
 };
 
 const getReportDateWhereSqlForRange = (startDateStr, endDateStr, saleDateColumn = "sh.LastSettlementDate") => {
-  const sgtStart = `CAST('${startDateStr}' AS DATETIME)`;
-  const sgtEnd = `DATEADD(DAY, 1, CAST('${endDateStr}' AS DATETIME))`;
-  return `${saleDateColumn} >= ${sgtStart} AND ${saleDateColumn} < ${sgtEnd}`;
+  saleDateColumn = resolveBusinessDateColumn(saleDateColumn);
+  const sgtStart = `CAST('${startDateStr}' AS DATE)`;
+  const sgtEnd = `CAST('${endDateStr}' AS DATE)`;
+  return `CAST(${saleDateColumn} AS DATE) >= ${sgtStart} AND CAST(${saleDateColumn} AS DATE) <= ${sgtEnd}`;
 };
 
 const normalizeReportFilter = (filter = "daily") => {
@@ -204,60 +243,62 @@ router.get("/all", async (req, res) => {
       const cctWhere = getReportDateWhereSqlForRange(startDate, endDate, "cct.CreatedDate");
       queryStr = `
         SELECT * FROM (
-          SELECT 
-            sh.SettlementID, 
-            sh.LastSettlementDate AS SettlementDate, 
-            sh.BillNo AS OrderId, 
-            sh.OrderType,
-            sh.TableNo, 
-            sh.Section, 
-            sh.CashierId, 
-            sh.BillNo, 
-            sh.SER_NAME,
-            ${normalizeReportPayModeSql("sts.PayMode")} as PayMode,
-            ISNULL(sts.SysAmount, sh.SysAmount) as SysAmount,
-            ISNULL(sts.ManualAmount, sh.ManualAmount) as ManualAmount,
-            sh.SubTotal as SubTotal,
-            ISNULL(sh.DiscountAmount, 0) as DiscountAmount,
-            sh.DiscountType as DiscountType,
-            ISNULL(sh.ServiceCharge, 0) as ServiceCharge,
-            ISNULL(sh.TotalTax, 0) as TotalTax,
-            ISNULL(sh.TakeawayCharge, 0) as TakeawayCharge,
-            ISNULL(sts.ReceiptCount, 0) as ReceiptCount,
-            ISNULL(sh.VoidItemQty, 0) as VoidQty,
-            ISNULL(sh.VoidItemAmount, 0) as VoidAmount,
-            sh.IsCancelled,
-            sh.CancellationReason,
-            sh.CancelledDate as CancelledDate,
-            sh.CancelledByUserName,
-            ri.OrderId AS MasterOrderId,
-            ISNULL(ri.TotalDiscountAmount, 0) as TotalDiscountAmount,
-            ISNULL(ri.TotalLineItemDiscountAmount, 0) as TotalLineItemDiscountAmount,
-            sh.RoundedBy as RoundedBy,
-            ISNULL(ri.DiscountPercentage, 0) as DiscountPercentage,
-            ISNULL(cct_sale.OutstandingAmount, 0) AS OutstandingAmount,
-            COALESCE(mm.Name, ccm.Name, mm_sale.Name, ccm_sale.Name) AS CustomerName,
-            sh.GuestName as GuestName,
-            sh.Pax as Pax
-          FROM SettlementHeader sh
-          LEFT JOIN SettlementTotalSales sts ON sh.SettlementID = sts.SettlementID
-          LEFT JOIN RestaurantInvoice ri ON sh.SettlementID = ri.RestaurantBillId
-          LEFT JOIN CustomerCreditTransactions cct_sale ON sh.SettlementID = cct_sale.SettlementId AND cct_sale.TransactionType = 'CREDIT_SALE'
-          LEFT JOIN MemberMaster mm ON sh.MemberId = mm.MemberId
-          LEFT JOIN CreditCustomerMaster ccm ON sh.MemberId = ccm.CustomerId
-          LEFT JOIN MemberMaster mm_sale ON cct_sale.MemberId = mm_sale.MemberId
-          LEFT JOIN CreditCustomerMaster ccm_sale ON cct_sale.MemberId = ccm_sale.CustomerId
-          WHERE ${shWhere}
-
-          UNION ALL
-
-          SELECT 
-            cct.TransactionId AS SettlementID,
-            cct.CreatedDate AS SettlementDate,
-            CASE WHEN mm.MemberId IS NOT NULL THEN 'Member Payment Collected' ELSE 'Credit Payment Collected' END AS OrderId,
-            'LEDGER' AS OrderType,
-            'LEDGER' AS TableNo,
-            COALESCE(mm.Name, m.Name, 'Customer') AS Section,
+           SELECT 
+             sh.SettlementID, 
+             sh.LastSettlementDate AS SettlementDate, 
+             COALESCE(sh.start_date, CAST(sh.LastSettlementDate AS DATE)) AS BusinessDate,
+             sh.BillNo AS OrderId, 
+             sh.OrderType,
+             sh.TableNo, 
+             sh.Section, 
+             sh.CashierId, 
+             sh.BillNo, 
+             sh.SER_NAME,
+             ${normalizeReportPayModeSql("sts.PayMode")} as PayMode,
+             ISNULL(sts.SysAmount, sh.SysAmount) as SysAmount,
+             ISNULL(sts.ManualAmount, sh.ManualAmount) as ManualAmount,
+             sh.SubTotal as SubTotal,
+             ISNULL(sh.DiscountAmount, 0) as DiscountAmount,
+             sh.DiscountType as DiscountType,
+             ISNULL(sh.ServiceCharge, 0) as ServiceCharge,
+             ISNULL(sh.TotalTax, 0) as TotalTax,
+             ISNULL(sh.TakeawayCharge, 0) as TakeawayCharge,
+             ISNULL(sts.ReceiptCount, 0) as ReceiptCount,
+             ISNULL(sh.VoidItemQty, 0) as VoidQty,
+             ISNULL(sh.VoidItemAmount, 0) as VoidAmount,
+             sh.IsCancelled,
+             sh.CancellationReason,
+             sh.CancelledDate as CancelledDate,
+             sh.CancelledByUserName,
+             ri.OrderId AS MasterOrderId,
+             ISNULL(ri.TotalDiscountAmount, 0) as TotalDiscountAmount,
+             ISNULL(ri.TotalLineItemDiscountAmount, 0) as TotalLineItemDiscountAmount,
+             sh.RoundedBy as RoundedBy,
+             ISNULL(ri.DiscountPercentage, 0) as DiscountPercentage,
+             ISNULL(cct_sale.OutstandingAmount, 0) AS OutstandingAmount,
+             COALESCE(mm.Name, ccm.Name, mm_sale.Name, ccm_sale.Name) AS CustomerName,
+             sh.GuestName as GuestName,
+             sh.Pax as Pax
+           FROM SettlementHeader sh
+           LEFT JOIN SettlementTotalSales sts ON sh.SettlementID = sts.SettlementID
+           LEFT JOIN RestaurantInvoice ri ON sh.SettlementID = ri.RestaurantBillId
+           LEFT JOIN CustomerCreditTransactions cct_sale ON sh.SettlementID = cct_sale.SettlementId AND cct_sale.TransactionType = 'CREDIT_SALE'
+           LEFT JOIN MemberMaster mm ON sh.MemberId = mm.MemberId
+           LEFT JOIN CreditCustomerMaster ccm ON sh.MemberId = ccm.CustomerId
+           LEFT JOIN MemberMaster mm_sale ON cct_sale.MemberId = mm_sale.MemberId
+           LEFT JOIN CreditCustomerMaster ccm_sale ON cct_sale.MemberId = ccm_sale.CustomerId
+           WHERE ${shWhere}
+ 
+           UNION ALL
+ 
+           SELECT 
+             cct.TransactionId AS SettlementID,
+             cct.CreatedDate AS SettlementDate,
+             CAST(cct.CreatedDate AS DATE) AS BusinessDate,
+             CASE WHEN mm.MemberId IS NOT NULL THEN 'Member Payment Collected' ELSE 'Credit Payment Collected' END AS OrderId,
+             'LEDGER' AS OrderType,
+             'LEDGER' AS TableNo,
+             COALESCE(mm.Name, m.Name, 'Customer') AS Section,
             CAST(cct.CreatedBy AS VARCHAR(50)) AS CashierId,
             cct.Remarks AS BillNo,
             'Cashier' AS SER_NAME,
@@ -296,59 +337,61 @@ router.get("/all", async (req, res) => {
     } else {
       queryStr = `
         SELECT TOP 200 * FROM (
-          SELECT 
-            sh.SettlementID, 
-            sh.LastSettlementDate AS SettlementDate, 
-            sh.BillNo AS OrderId, 
-            sh.OrderType,
-            sh.TableNo, 
-            sh.Section, 
-            sh.CashierId, 
-            sh.BillNo, 
-            sh.SER_NAME,
-            ${normalizeReportPayModeSql("sts.PayMode")} as PayMode,
-            ISNULL(sts.SysAmount, sh.SysAmount) as SysAmount,
-            ISNULL(sts.ManualAmount, sh.ManualAmount) as ManualAmount,
-            sh.SubTotal as SubTotal,
-            ISNULL(sh.DiscountAmount, 0) as DiscountAmount,
-            sh.DiscountType as DiscountType,
-            ISNULL(sh.ServiceCharge, 0) as ServiceCharge,
-            ISNULL(sh.TotalTax, 0) as TotalTax,
-            ISNULL(sts.ReceiptCount, 0) as ReceiptCount,
-            ISNULL(sh.VoidItemQty, 0) as VoidQty,
-            ISNULL(sh.VoidItemAmount, 0) as VoidAmount,
-            sh.IsCancelled,
-            sh.CancellationReason,
-            sh.CancelledDate as CancelledDate,
-            sh.CancelledByUserName,
-            ri.OrderId AS MasterOrderId,
-            ISNULL(ri.TotalDiscountAmount, 0) as TotalDiscountAmount,
-            ISNULL(ri.TotalLineItemDiscountAmount, 0) as TotalLineItemDiscountAmount,
-            sh.RoundedBy as RoundedBy,
-            ISNULL(ri.DiscountPercentage, 0) as DiscountPercentage,
-            ISNULL(cct_sale.OutstandingAmount, 0) AS OutstandingAmount,
-            COALESCE(mm.Name, ccm.Name, mm_sale.Name, ccm_sale.Name) AS CustomerName,
-            sh.GuestName as GuestName,
-            sh.Pax as Pax
-          FROM SettlementHeader sh
-          LEFT JOIN SettlementTotalSales sts ON sh.SettlementID = sts.SettlementID
-          LEFT JOIN RestaurantInvoice ri ON sh.SettlementID = ri.RestaurantBillId
-          LEFT JOIN CustomerCreditTransactions cct_sale ON sh.SettlementID = cct_sale.SettlementId AND cct_sale.TransactionType = 'CREDIT_SALE'
-          LEFT JOIN MemberMaster mm ON sh.MemberId = mm.MemberId
-          LEFT JOIN CreditCustomerMaster ccm ON sh.MemberId = ccm.CustomerId
-          LEFT JOIN MemberMaster mm_sale ON cct_sale.MemberId = mm_sale.MemberId
-          LEFT JOIN CreditCustomerMaster ccm_sale ON cct_sale.MemberId = ccm_sale.CustomerId
-
-          UNION ALL
-
-          SELECT 
-            cct.TransactionId AS SettlementID,
-            cct.CreatedDate AS SettlementDate,
-            CASE WHEN mm.MemberId IS NOT NULL THEN 'Member Payment Collected' ELSE 'Credit Payment Collected' END AS OrderId,
-            'LEDGER' AS OrderType,
-            'LEDGER' AS TableNo,
-            COALESCE(mm.Name, m.Name, 'Customer') AS Section,
-            CAST(cct.CreatedBy AS VARCHAR(50)) AS CashierId,
+           SELECT 
+             sh.SettlementID, 
+             sh.LastSettlementDate AS SettlementDate, 
+             COALESCE(sh.start_date, CAST(sh.LastSettlementDate AS DATE)) AS BusinessDate,
+             sh.BillNo AS OrderId, 
+             sh.OrderType,
+             sh.TableNo, 
+             sh.Section, 
+             sh.CashierId, 
+             sh.BillNo, 
+             sh.SER_NAME,
+             ${normalizeReportPayModeSql("sts.PayMode")} as PayMode,
+             ISNULL(sts.SysAmount, sh.SysAmount) as SysAmount,
+             ISNULL(sts.ManualAmount, sh.ManualAmount) as ManualAmount,
+             sh.SubTotal as SubTotal,
+             ISNULL(sh.DiscountAmount, 0) as DiscountAmount,
+             sh.DiscountType as DiscountType,
+             ISNULL(sh.ServiceCharge, 0) as ServiceCharge,
+             ISNULL(sh.TotalTax, 0) as TotalTax,
+             ISNULL(sts.ReceiptCount, 0) as ReceiptCount,
+             ISNULL(sh.VoidItemQty, 0) as VoidQty,
+             ISNULL(sh.VoidItemAmount, 0) as VoidAmount,
+             sh.IsCancelled,
+             sh.CancellationReason,
+             sh.CancelledDate as CancelledDate,
+             sh.CancelledByUserName,
+             ri.OrderId AS MasterOrderId,
+             ISNULL(ri.TotalDiscountAmount, 0) as TotalDiscountAmount,
+             ISNULL(ri.TotalLineItemDiscountAmount, 0) as TotalLineItemDiscountAmount,
+             sh.RoundedBy as RoundedBy,
+             ISNULL(ri.DiscountPercentage, 0) as DiscountPercentage,
+             ISNULL(cct_sale.OutstandingAmount, 0) AS OutstandingAmount,
+             COALESCE(mm.Name, ccm.Name, mm_sale.Name, ccm_sale.Name) AS CustomerName,
+             sh.GuestName as GuestName,
+             sh.Pax as Pax
+           FROM SettlementHeader sh
+           LEFT JOIN SettlementTotalSales sts ON sh.SettlementID = sts.SettlementID
+           LEFT JOIN RestaurantInvoice ri ON sh.SettlementID = ri.RestaurantBillId
+           LEFT JOIN CustomerCreditTransactions cct_sale ON sh.SettlementID = cct_sale.SettlementId AND cct_sale.TransactionType = 'CREDIT_SALE'
+           LEFT JOIN MemberMaster mm ON sh.MemberId = mm.MemberId
+           LEFT JOIN CreditCustomerMaster ccm ON sh.MemberId = ccm.CustomerId
+           LEFT JOIN MemberMaster mm_sale ON cct_sale.MemberId = mm_sale.MemberId
+           LEFT JOIN CreditCustomerMaster ccm_sale ON cct_sale.MemberId = ccm_sale.CustomerId
+ 
+           UNION ALL
+ 
+           SELECT 
+             cct.TransactionId AS SettlementID,
+             cct.CreatedDate AS SettlementDate,
+             CAST(cct.CreatedDate AS DATE) AS BusinessDate,
+             CASE WHEN mm.MemberId IS NOT NULL THEN 'Member Payment Collected' ELSE 'Credit Payment Collected' END AS OrderId,
+             'LEDGER' AS OrderType,
+             'LEDGER' AS TableNo,
+             COALESCE(mm.Name, m.Name, 'Customer') AS Section,
+             CAST(cct.CreatedBy AS VARCHAR(50)) AS CashierId,
             cct.Remarks AS BillNo,
             'Cashier' AS SER_NAME,
             cct.PaymentMethod AS PayMode,
@@ -724,13 +767,13 @@ router.get("/category", async (req, res) => {
             SUM(CAST(ISNULL(rod.TotalDetailLineAmount, 0) AS decimal(18, 2))) AS totalAmount
           FROM RestaurantOrderDetail rod
           INNER JOIN (
-            SELECT OrderId, RestaurantBillId, InvoiceDate 
+            SELECT OrderId, RestaurantBillId, InvoiceDate, start_date 
             FROM (
-              SELECT OrderId, RestaurantBillId, InvoiceDate, CreatedOn, ROW_NUMBER() OVER (PARTITION BY OrderId ORDER BY CreatedOn DESC) as rn
+              SELECT OrderId, RestaurantBillId, InvoiceDate, CreatedOn, start_date, ROW_NUMBER() OVER (PARTITION BY OrderId ORDER BY CreatedOn DESC) as rn
               FROM (
-                SELECT OrderId, RestaurantBillId, InvoiceDate, CreatedOn FROM RestaurantInvoice WHERE StatusCode = 5
+                SELECT OrderId, RestaurantBillId, InvoiceDate, CreatedOn, start_date FROM RestaurantInvoice WHERE StatusCode = 5
                 UNION ALL
-                SELECT OrderId, RestaurantBillId, InvoiceDate, CreatedOn FROM RestaurantInvoicecur WHERE StatusCode = 5
+                SELECT OrderId, RestaurantBillId, InvoiceDate, CreatedOn, start_date FROM RestaurantInvoicecur WHERE StatusCode = 5
               ) CombinedInvoices
             ) DeduplicatedInvoices
             WHERE rn = 1
@@ -738,7 +781,7 @@ router.get("/category", async (req, res) => {
           LEFT JOIN DishMaster d ON rod.DishId = d.DishId
           LEFT JOIN DishGroupMaster dg ON d.DishGroupId = dg.DishGroupId
           LEFT JOIN CategoryMaster cm ON dg.CategoryId = cm.CategoryId
-          WHERE ${legacyDateWhereSql.replace(/InvoiceDate/g, 'ri.InvoiceDate')}
+          WHERE ${legacyDateWhereSql.replace(/start_date/g, 'ri.start_date')}
             AND NOT EXISTS (
               SELECT 1 FROM SettlementHeader sh_dup 
               WHERE sh_dup.SettlementID = ri.RestaurantBillId
@@ -756,7 +799,7 @@ router.get("/category", async (req, res) => {
           LEFT JOIN DishMaster d ON rod.DishId = d.DishId
           LEFT JOIN DishGroupMaster dg ON d.DishGroupId = dg.DishGroupId
           LEFT JOIN CategoryMaster cm ON dg.CategoryId = cm.CategoryId
-          WHERE ${appDateWhereSql.replace(/sh\.OrderDate|sh\.LastSettlementDate/g, 'ro.OrderDateTime')}
+          WHERE ${appDateWhereSql.replace(/sh\.start_date/g, 'ro.start_date')}
             AND ISNULL(ro.StatusCode, 0) = 3
             AND NOT EXISTS (
               SELECT 1 FROM SettlementHeader sh_dup 
@@ -825,13 +868,13 @@ router.get("/dish", async (req, res) => {
             SUM(CAST(ISNULL(rod.TotalDetailLineAmount, 0) AS decimal(18, 2))) AS totalAmount
           FROM RestaurantOrderDetail rod
           INNER JOIN (
-            SELECT OrderId, RestaurantBillId, InvoiceDate 
+            SELECT OrderId, RestaurantBillId, InvoiceDate, start_date 
             FROM (
-              SELECT OrderId, RestaurantBillId, InvoiceDate, CreatedOn, ROW_NUMBER() OVER (PARTITION BY OrderId ORDER BY CreatedOn DESC) as rn
+              SELECT OrderId, RestaurantBillId, InvoiceDate, CreatedOn, start_date, ROW_NUMBER() OVER (PARTITION BY OrderId ORDER BY CreatedOn DESC) as rn
               FROM (
-                SELECT OrderId, RestaurantBillId, InvoiceDate, CreatedOn FROM RestaurantInvoice WHERE StatusCode = 5
+                SELECT OrderId, RestaurantBillId, InvoiceDate, CreatedOn, start_date FROM RestaurantInvoice WHERE StatusCode = 5
                 UNION ALL
-                SELECT OrderId, RestaurantBillId, InvoiceDate, CreatedOn FROM RestaurantInvoicecur WHERE StatusCode = 5
+                SELECT OrderId, RestaurantBillId, InvoiceDate, CreatedOn, start_date FROM RestaurantInvoicecur WHERE StatusCode = 5
               ) CombinedInvoices
             ) DeduplicatedInvoices
             WHERE rn = 1
@@ -839,7 +882,7 @@ router.get("/dish", async (req, res) => {
           LEFT JOIN DishMaster d ON rod.DishId = d.DishId
           LEFT JOIN DishGroupMaster dg ON d.DishGroupId = dg.DishGroupId
           LEFT JOIN CategoryMaster cm ON dg.CategoryId = cm.CategoryId
-          WHERE ${legacyDateWhereSql.replace(/InvoiceDate/g, 'ri.InvoiceDate')}
+          WHERE ${legacyDateWhereSql.replace(/start_date/g, 'ri.start_date')}
             AND NOT EXISTS (
               SELECT 1 FROM SettlementHeader sh_dup 
               WHERE sh_dup.SettlementID = ri.RestaurantBillId
@@ -862,7 +905,7 @@ router.get("/dish", async (req, res) => {
           LEFT JOIN DishMaster d ON rod.DishId = d.DishId
           LEFT JOIN DishGroupMaster dg ON d.DishGroupId = dg.DishGroupId
           LEFT JOIN CategoryMaster cm ON dg.CategoryId = cm.CategoryId
-          WHERE ${appDateWhereSql.replace(/sh\.OrderDate|sh\.LastSettlementDate/g, 'ro.OrderDateTime')}
+          WHERE ${appDateWhereSql.replace(/sh\.start_date/g, 'ro.start_date')}
             AND ISNULL(ro.StatusCode, 0) = 3
             AND NOT EXISTS (
               SELECT 1 FROM SettlementHeader sh_dup 
@@ -1336,6 +1379,15 @@ router.get("/daily-order-count", async (req, res) => {
 router.post("/save", async (req, res) => {
   try {
     const pool = await poolPromise;
+
+    // Day Start / Day End validation check
+    const activeDayRes = await pool.request().query("SELECT TOP 1 StartDate FROM DateEntry ORDER BY CreatedDate DESC");
+    if (activeDayRes.recordset.length === 0) {
+      return res.status(400).json({ error: "No active business date. Please Start Day first." });
+    }
+    const activeStartDate = activeDayRes.recordset[0].StartDate;
+    const formattedStartDate = activeStartDate instanceof Date ? activeStartDate.toISOString().split("T")[0] : activeStartDate;
+
     const {
       settlementId: clientSettlementId,
       totalAmount, paymentMethod, items, subTotal, taxAmount,
@@ -1613,18 +1665,19 @@ router.post("/save", async (req, res) => {
       .input("SplitCount", sql.Numeric, splitIndexValue)
       .input("GuestName", sql.NVarChar(9), req.body.customerName ? req.body.customerName.trim().substring(0, 9) : null)
       .input("Pax", sql.Int, req.body.pax ? parseInt(req.body.pax) : null)
+      .input("startDate", sql.Date, formattedStartDate)
       .query(`
         -- 1. Insert into SettlementHeader
         INSERT INTO SettlementHeader (
           SettlementID, LastSettlementDate, LastDayEndDate, SubTotal, TotalTax, DiscountAmount, DiscountType, 
           BillNo, OrderType, TableNo, Section, MemberId, CashierID, BusinessUnitId, 
           SysAmount, ManualAmount, CreatedBy, CreatedOn, SER_NAME, MobileNo, 
-          VoidItemQty, VoidItemAmount, RoundedBy, ServiceCharge, GuestName, Pax, TakeawayCharge
+          VoidItemQty, VoidItemAmount, RoundedBy, ServiceCharge, GuestName, Pax, TakeawayCharge, start_date
         ) VALUES (
           @SettlementID, GETDATE(), GETDATE(), @SubTotal, @TotalTax, @DiscountAmount, @DiscountType, 
           @BillNo, @OrderType, @TableNo, @Section, @MemberId, @CashierID, @BusinessUnitId, 
           @SysAmount, @ManualAmount, @CreatedBy, GETDATE(), @SER_NAME, @MobileNo, 
-          @VoidItemQty, @VoidItemAmount, @RoundedBy, @ServiceCharge, @GuestName, @Pax, @TakeawayCharge
+          @VoidItemQty, @VoidItemAmount, @RoundedBy, @ServiceCharge, @GuestName, @Pax, @TakeawayCharge, @startDate
         );
 
         -- 2. Insert into RestaurantInvoice (Perfect Sync)
@@ -1633,13 +1686,13 @@ router.post("/save", async (req, res) => {
           TotalLineItemAmount, TotalTax, DiscountAmount, TotalAmount, StatusCode, 
           CreatedBy, CreatedOn, InvoiceDate, ServiceCharge, RoundedBy, TotalAmountLessFreight,
           PaymentTermCode, DiscountId, DiscountPercentage, DiscountRemarks, TotalDiscountAmount,
-          TotalLineItemDiscountAmount, MergeCount, SplitCount, Pax
+          TotalLineItemDiscountAmount, MergeCount, SplitCount, Pax, start_date
         ) VALUES (
           @BusinessUnitId, @SettlementID, @InvoiceOrderId, @BillNo, GETDATE(), GETDATE(),
           @SubTotal, @TotalTax, @DiscountAmount, @SysAmount, 5,
           @CreatedBy, GETDATE(), CAST(GETDATE() AS DATE), @ServiceCharge, @RoundedBy, @SubTotal,
           @PayModeCode, @DiscountId, @DiscountPercentage, @DiscountRemarks, @TotalDiscountAmount,
-          @TotalLineItemDiscountAmount, @MergeCount, @SplitCount, @Pax
+          @TotalLineItemDiscountAmount, @MergeCount, @SplitCount, @Pax, @startDate
         );
 
         -- 2b. Insert into RestaurantInvoiceCur (Mirror for Backoffice Sync)
@@ -1648,13 +1701,13 @@ router.post("/save", async (req, res) => {
           TotalLineItemAmount, TotalTax, DiscountAmount, TotalAmount, StatusCode, 
           CreatedBy, CreatedOn, InvoiceDate, ServiceCharge, RoundedBy, TotalAmountLessFreight,
           PaymentTermCode, DiscountId, DiscountPercentage, DiscountRemarks, TotalDiscountAmount,
-          TotalLineItemDiscountAmount, MergeCount, SplitCount, Pax
+          TotalLineItemDiscountAmount, MergeCount, SplitCount, Pax, start_date
         ) VALUES (
           @BusinessUnitId, @SettlementID, @InvoiceOrderId, @BillNo, GETDATE(), GETDATE(),
           @SubTotal, @TotalTax, @DiscountAmount, @SysAmount, 5,
           @CreatedBy, GETDATE(), CAST(GETDATE() AS DATE), @ServiceCharge, @RoundedBy, @SubTotal,
           @PayModeCode, @DiscountId, @DiscountPercentage, @DiscountRemarks, @TotalDiscountAmount,
-          @TotalLineItemDiscountAmount, @MergeCount, @SplitCount, @Pax
+          @TotalLineItemDiscountAmount, @MergeCount, @SplitCount, @Pax, @startDate
         );
       `);
 
@@ -1761,6 +1814,7 @@ router.post("/save", async (req, res) => {
         // Prepare and execute all inserts in a single database round-trip
         const insertReq = transaction.request();
         insertReq.input("SettlementID", sql.UniqueIdentifier, settlementId);
+        insertReq.input("startDate", sql.Date, formattedStartDate);
         
         let insertQueries = [];
         items.forEach((item, idx) => {
@@ -1790,8 +1844,8 @@ router.post("/save", async (req, res) => {
           insertReq.input(`ComboDetailsJSON_${idx}`, sql.NVarChar(sql.MAX), comboJSON);
           
           insertQueries.push(`
-            INSERT INTO SettlementItemDetail (SettlementID, DishId, DishGroupId, SubCategoryId, CategoryId, DishName, SongName, Qty, Price, OrderDateTime, CategoryName, SubCategoryName, DiscountAmount, DiscountType, Status, Spicy, Salt, Oil, Sugar, OrderDetailId, ComboDetailsJSON)
-            VALUES (@SettlementID, @DishId_${idx}, @DishGroupId_${idx}, @DishGroupId_${idx}, @CategoryId_${idx}, @DishName_${idx}, @SongName_${idx}, @Qty_${idx}, @Price_${idx}, GETDATE(), @CategoryName_${idx}, @SubCategoryName_${idx}, @ItemDiscountAmount_${idx}, @ItemDiscountType_${idx}, @Status_${idx}, @Spicy_${idx}, @Salt_${idx}, @Oil_${idx}, @Sugar_${idx}, @OrderDetailId_${idx}, @ComboDetailsJSON_${idx});
+            INSERT INTO SettlementItemDetail (SettlementID, DishId, DishGroupId, SubCategoryId, CategoryId, DishName, SongName, Qty, Price, OrderDateTime, CategoryName, SubCategoryName, DiscountAmount, DiscountType, Status, Spicy, Salt, Oil, Sugar, OrderDetailId, ComboDetailsJSON, start_date)
+            VALUES (@SettlementID, @DishId_${idx}, @DishGroupId_${idx}, @DishGroupId_${idx}, @CategoryId_${idx}, @DishName_${idx}, @SongName_${idx}, @Qty_${idx}, @Price_${idx}, GETDATE(), @CategoryName_${idx}, @SubCategoryName_${idx}, @ItemDiscountAmount_${idx}, @ItemDiscountType_${idx}, @Status_${idx}, @Spicy_${idx}, @Salt_${idx}, @Oil_${idx}, @Sugar_${idx}, @OrderDetailId_${idx}, @ComboDetailsJSON_${idx}, @startDate);
           `);
         });
         
@@ -1826,13 +1880,14 @@ router.post("/save", async (req, res) => {
               .input("catName", sql.NVarChar(255), v.CategoryName)
               .input("groupName", sql.NVarChar(255), v.DishGroupName)
               .input("OrderDetailId", sql.UniqueIdentifier, toGuidOrNull(v.OrderDetailId))
+              .input("startDate", sql.Date, formattedStartDate)
               .query(`
                 INSERT INTO SettlementItemDetail (
                   SettlementID, DishId, DishName, SongName, Qty, Price, Status, OrderDateTime,
-                  CategoryId, CategoryName, SubCategoryName, OrderDetailId
+                  CategoryId, CategoryName, SubCategoryName, OrderDetailId, start_date
                 ) VALUES (
                   @sid, @dishId, @dishName, @songName, @qty, @price, 'VOIDED', GETDATE(),
-                  @catId, @catName, @groupName, @OrderDetailId
+                  @catId, @catName, @groupName, @OrderDetailId, @startDate
                 )
               `);
           }
@@ -1933,22 +1988,23 @@ router.post("/save", async (req, res) => {
             .input("BusinessUnitId", sql.UniqueIdentifier, sanitizeGuid(businessUnitId))
             .input("CreatedBy", sql.UniqueIdentifier, sanitizeGuid(cashierId))
             .input("ModifiedBy", sql.UniqueIdentifier, sanitizeGuid(cashierId))
+            .input("startDate", sql.Date, formattedStartDate)
             .query(`
               -- 🛡️ ATOMIC SYNC: Populating both tables in one go for report integrity
               
               -- 1. Current Table (for POS views)
-              INSERT INTO [dbo].[PaymentDetailCur] (PaymentId, RestaurantBillId, BilledFor, PaymentCollectedOn, PaymentType, Paymode, Amount, ReferenceNumber, Remarks, BusinessUnitId, CreatedBy, CreatedOn, ModifiedBy, ModifiedOn)
-              VALUES (@PaymentId, @RestaurantBillId, @BilledFor, GETDATE(), @PaymentType, @Paymode, @Amount, @ReferenceNumber, @Remarks, @BusinessUnitId, @CreatedBy, GETDATE(), @ModifiedBy, GETDATE());
+              INSERT INTO [dbo].[PaymentDetailCur] (PaymentId, RestaurantBillId, BilledFor, PaymentCollectedOn, PaymentType, Paymode, Amount, ReferenceNumber, Remarks, BusinessUnitId, CreatedBy, CreatedOn, ModifiedBy, ModifiedOn, start_date)
+              VALUES (@PaymentId, @RestaurantBillId, @BilledFor, GETDATE(), @PaymentType, @Paymode, @Amount, @ReferenceNumber, @Remarks, @BusinessUnitId, @CreatedBy, GETDATE(), @ModifiedBy, GETDATE(), @startDate);
 
               -- 2. Master Table (CRITICAL for Backoffice Reports: vw_PaymentDetail)
               INSERT INTO [dbo].[PaymentDetail] (
                 PaymentId, RestaurantBillId, SettlementId, InvoiceId, OrderId, BilledFor, PaymentCollectedOn, 
                 PaymentType, Paymode, Amount, ReferenceNumber, Remarks, BusinessUnitId, 
-                CreatedBy, CreatedOn, ModifiedBy, ModifiedOn, isSettlement
+                CreatedBy, CreatedOn, ModifiedBy, ModifiedOn, isSettlement, start_date
               ) VALUES (
                 @PaymentId, @RestaurantBillId, @RestaurantBillId, @RestaurantBillId, @PaymentOrderId, @BilledFor, GETDATE(), 
                 @PaymentType, @Paymode, @Amount, @ReferenceNumber, @Remarks, @BusinessUnitId, 
-                @CreatedBy, GETDATE(), @ModifiedBy, GETDATE(), 1
+                @CreatedBy, GETDATE(), @ModifiedBy, GETDATE(), 1, @startDate
               );
             `);
           console.log(`[SAVE SALE] PaymentDetail Sync Success. Rows affected: ${payResult.rowsAffected.join(', ')}`);
@@ -2070,6 +2126,20 @@ router.post("/save", async (req, res) => {
         }
       }
 
+      // 🆕 PROMO CODE AMOUNT DEDUCTION
+      if (discountRemarks && discountRemarks.startsWith("Promo:") && orderDiscountAmount > 0) {
+        const promoCode = discountRemarks.substring(6).trim();
+        console.log(`[SAVE SALE] Deducting Promo Code amount for code: ${promoCode}, Amount: ${orderDiscountAmount}`);
+        await transaction.request()
+          .input("PromoCode", sql.NVarChar(100), promoCode)
+          .input("DeductAmount", sql.Decimal(18, 2), orderDiscountAmount)
+          .query(`
+            UPDATE MemberMaster 
+            SET Promoamount = CASE WHEN Promoamount - @DeductAmount < 0 THEN 0 ELSE Promoamount - @DeductAmount END 
+            WHERE Promocode = @PromoCode AND IsActive = 1
+          `);
+      }
+
       // 🚀 PROFESSIONAL ARCHIVE: Move from Cur to History (Only run if not split, or if split has no remaining items)
       if (displayOrderId && (!isSplit || !hasRemaining)) {
         try {
@@ -2117,28 +2187,28 @@ router.post("/save", async (req, res) => {
                   TakeawayCharge = @TakeawayCharge,
                   isGuestMeal = ISNULL((SELECT TOP 1 isGuestMeal FROM [dbo].[Discount] WHERE DiscountId = @DiscountId), 0)
               WHERE OrderNumber = @orderNo;
- 
+
               -- Move Header (History) - For Parent Order
               IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('RestaurantOrder') AND name = 'TotalAmount')
               BEGIN
                  INSERT INTO RestaurantOrder (
                    OrderId, OrderNumber, OrderDateTime, Tableno, StatusCode, CreatedBy, CreatedOn, MobileNo, BusinessUnitId, isOrderClosed, PriorityCode,
-                   TotalLineItemAmount, TotalLineItemDiscountAmount, DiscountAmount, DiscountPercentage, TotalDiscountAmount, RoundedBy, isGuestMeal, DiscountId, DiscountRemarks, IsTakeAway, TimeBilled, ServiceCharge, TakeawayCharge
+                   TotalLineItemAmount, TotalLineItemDiscountAmount, DiscountAmount, DiscountPercentage, TotalDiscountAmount, RoundedBy, isGuestMeal, DiscountId, DiscountRemarks, IsTakeAway, TimeBilled, ServiceCharge, TakeawayCharge, start_date
                  )
                  SELECT 
                    OrderId, OrderNumber, OrderDateTime, Tableno, 3, CreatedBy, CreatedOn, MobileNo, BusinessUnitId, 1, ISNULL(PriorityCode, @PriorityCode),
-                   TotalLineItemAmount, TotalLineItemDiscountAmount, DiscountAmount, DiscountPercentage, TotalDiscountAmount, RoundedBy, isGuestMeal, DiscountId, DiscountRemarks, IsTakeAway, GETDATE(), ServiceCharge, TakeawayCharge
+                   TotalLineItemAmount, TotalLineItemDiscountAmount, DiscountAmount, DiscountPercentage, TotalDiscountAmount, RoundedBy, isGuestMeal, DiscountId, DiscountRemarks, IsTakeAway, GETDATE(), ServiceCharge, TakeawayCharge, start_date
                  FROM RestaurantOrderCur WHERE OrderNumber = @orderNo;
               END
               ELSE
               BEGIN
                  INSERT INTO RestaurantOrder (
                    OrderId, OrderNumber, OrderDateTime, Tableno, StatusCode, CreatedBy, CreatedOn, MobileNo, BusinessUnitId, isOrderClosed, PriorityCode, TotalAmount,
-                   TotalLineItemAmount, TotalLineItemDiscountAmount, DiscountAmount, DiscountPercentage, TotalDiscountAmount, RoundedBy, isGuestMeal, DiscountId, DiscountRemarks, IsTakeAway, TimeBilled, ServiceCharge, TakeawayCharge
+                   TotalLineItemAmount, TotalLineItemDiscountAmount, DiscountAmount, DiscountPercentage, TotalDiscountAmount, RoundedBy, isGuestMeal, DiscountId, DiscountRemarks, IsTakeAway, TimeBilled, ServiceCharge, TakeawayCharge, start_date
                  )
                  SELECT 
                    OrderId, OrderNumber, OrderDateTime, Tableno, 3, CreatedBy, CreatedOn, MobileNo, BusinessUnitId, 1, ISNULL(PriorityCode, @PriorityCode), TotalAmount,
-                   TotalLineItemAmount, TotalLineItemDiscountAmount, DiscountAmount, DiscountPercentage, TotalDiscountAmount, RoundedBy, isGuestMeal, DiscountId, DiscountRemarks, IsTakeAway, GETDATE(), ServiceCharge, TakeawayCharge
+                   TotalLineItemAmount, TotalLineItemDiscountAmount, DiscountAmount, DiscountPercentage, TotalDiscountAmount, RoundedBy, isGuestMeal, DiscountId, DiscountRemarks, IsTakeAway, GETDATE(), ServiceCharge, TakeawayCharge, start_date
                  FROM RestaurantOrderCur WHERE OrderNumber = @orderNo;
               END
  
@@ -2147,11 +2217,11 @@ router.post("/save", async (req, res) => {
               BEGIN
                  INSERT INTO RestaurantOrder (
                    OrderId, OrderNumber, OrderDateTime, Tableno, StatusCode, CreatedBy, CreatedOn, MobileNo, BusinessUnitId, isOrderClosed, PriorityCode,
-                   TotalLineItemAmount, TotalLineItemDiscountAmount, DiscountAmount, DiscountPercentage, TotalDiscountAmount, RoundedBy, isGuestMeal, DiscountId, DiscountRemarks, IsTakeAway, TimeBilled, ServiceCharge, TakeawayCharge
+                   TotalLineItemAmount, TotalLineItemDiscountAmount, DiscountAmount, DiscountPercentage, TotalDiscountAmount, RoundedBy, isGuestMeal, DiscountId, DiscountRemarks, IsTakeAway, TimeBilled, ServiceCharge, TakeawayCharge, start_date
                  )
                  SELECT 
                    r.OrderId, r.OrderNumber, r.OrderDateTime, r.Tableno, 3, r.CreatedBy, r.CreatedOn, r.MobileNo, r.BusinessUnitId, 1, ISNULL(r.PriorityCode, @PriorityCode),
-                   r.TotalLineItemAmount, r.TotalLineItemDiscountAmount, r.DiscountAmount, r.DiscountPercentage, r.TotalDiscountAmount, r.RoundedBy, r.isGuestMeal, r.DiscountId, r.DiscountRemarks, r.IsTakeAway, GETDATE(), r.ServiceCharge, r.TakeawayCharge
+                   r.TotalLineItemAmount, r.TotalLineItemDiscountAmount, r.DiscountAmount, r.DiscountPercentage, r.TotalDiscountAmount, r.RoundedBy, r.isGuestMeal, r.DiscountId, r.DiscountRemarks, r.IsTakeAway, GETDATE(), r.ServiceCharge, r.TakeawayCharge, r.start_date
                  FROM RestaurantOrderCur r
                  INNER JOIN OrderMergeHistory omh ON r.OrderId = omh.ChildOrderId
                  WHERE omh.ParentOrderId = (SELECT TOP 1 OrderId FROM RestaurantOrderCur WHERE OrderNumber = @orderNo)
@@ -2161,11 +2231,11 @@ router.post("/save", async (req, res) => {
               BEGIN
                  INSERT INTO RestaurantOrder (
                    OrderId, OrderNumber, OrderDateTime, Tableno, StatusCode, CreatedBy, CreatedOn, MobileNo, BusinessUnitId, isOrderClosed, PriorityCode, TotalAmount,
-                   TotalLineItemAmount, TotalLineItemDiscountAmount, DiscountAmount, DiscountPercentage, TotalDiscountAmount, RoundedBy, isGuestMeal, DiscountId, DiscountRemarks, IsTakeAway, TimeBilled, ServiceCharge, TakeawayCharge
+                   TotalLineItemAmount, TotalLineItemDiscountAmount, DiscountAmount, DiscountPercentage, TotalDiscountAmount, RoundedBy, isGuestMeal, DiscountId, DiscountRemarks, IsTakeAway, TimeBilled, ServiceCharge, TakeawayCharge, start_date
                  )
                  SELECT 
                    r.OrderId, r.OrderNumber, r.OrderDateTime, r.Tableno, 3, r.CreatedBy, r.CreatedOn, r.MobileNo, r.BusinessUnitId, 1, ISNULL(r.PriorityCode, @PriorityCode), 0,
-                   r.TotalLineItemAmount, r.TotalLineItemDiscountAmount, r.DiscountAmount, r.DiscountPercentage, r.TotalDiscountAmount, r.RoundedBy, r.isGuestMeal, r.DiscountId, r.DiscountRemarks, r.IsTakeAway, GETDATE(), r.ServiceCharge, r.TakeawayCharge
+                   r.TotalLineItemAmount, r.TotalLineItemDiscountAmount, r.DiscountAmount, r.DiscountPercentage, r.TotalDiscountAmount, r.RoundedBy, r.isGuestMeal, r.DiscountId, r.DiscountRemarks, r.IsTakeAway, GETDATE(), r.ServiceCharge, r.TakeawayCharge, r.start_date
                  FROM RestaurantOrderCur r
                  INNER JOIN OrderMergeHistory omh ON r.OrderId = omh.ChildOrderId
                  WHERE omh.ParentOrderId = (SELECT TOP 1 OrderId FROM RestaurantOrderCur WHERE OrderNumber = @orderNo)
@@ -2179,7 +2249,7 @@ router.post("/save", async (req, res) => {
                 OrderDetailId, OrderId, DishId, Description, DishName, Quantity, PricePerUnit, 
                 ActualAmount, TotalDetailLineAmount, BaseAmount, StatusCode, CreatedBy, CreatedOn, 
                 BusinessUnitId, OrderDateTime, Spicy, Salt, Oil, Sugar, Remarks, 
-                OrderConfirmQty, VoidReason, DiscountAmount, DiscountType, isTakeAway, ManualDiscountAmount, ServiceCharge, ComboDetailsJSON
+                OrderConfirmQty, VoidReason, DiscountAmount, DiscountType, isTakeAway, ManualDiscountAmount, ServiceCharge, ComboDetailsJSON, start_date
               )
               SELECT 
                 d.OrderDetailId, d.OrderId, d.DishId, d.Description, d.DishName, d.Quantity, d.PricePerUnit, 
@@ -2190,14 +2260,14 @@ router.post("/save", async (req, res) => {
                 d.OrderConfirmQty, d.VoidReason, 
                 ISNULL(d.DiscountAmount, 0), ISNULL(d.DiscountType, 'fixed'),
                 ISNULL(h.IsTakeAway, ISNULL(d.isTakeAway, 0)),
-                ISNULL(d.DiscountAmount, 0), d.ServiceCharge, d.ComboDetailsJSON
+                ISNULL(d.DiscountAmount, 0), d.ServiceCharge, d.ComboDetailsJSON, d.start_date
               FROM RestaurantOrderDetailCur d
               INNER JOIN RestaurantOrderCur h ON d.OrderId = h.OrderId
               WHERE h.OrderNumber = @orderNo;
 
               -- Move Modifiers (History)
-              INSERT INTO Restaurantmodifierdetail (OrderDetailId, OrderId, DishId, ModifierId, Quantity, Amount, ModifierName, Description, CreatedBy, CreatedOn)
-              SELECT OrderDetailId, OrderId, DishId, ModifierId, Quantity, Amount, ModifierName, ModifierName, CreatedBy, CreatedOn
+              INSERT INTO Restaurantmodifierdetail (OrderDetailId, OrderId, DishId, ModifierId, Quantity, Amount, ModifierName, Description, CreatedBy, CreatedOn, start_date)
+              SELECT OrderDetailId, OrderId, DishId, ModifierId, Quantity, Amount, ModifierName, ModifierName, CreatedBy, CreatedOn, start_date
               FROM RestaurantmodifierdetailCur WHERE OrderId IN (SELECT OrderId FROM RestaurantOrderCur WHERE OrderNumber = @orderNo);
             `);
           console.log(`[SAVE SALE] Professional Archive complete for ${displayOrderId}`);

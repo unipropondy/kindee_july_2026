@@ -832,9 +832,18 @@ const CartItemRow = React.memo(
                           isPhone && { fontSize: 8 },
                         ]}
                       >
-                        {item.discountType === 'fixed' || (item.discountType == null && item.discountAmount > 0 && !item.discount)
-                          ? `-$${Number(item.discountAmount ?? item.discount).toFixed(2)}`
-                          : `-${Number(item.discountAmount ?? item.discount)}%`}
+                        {(() => {
+                          const isCombo = item.isCombo === true || String(item.isCombo) === "1" || item.isCombo === 1;
+                          const discountBasis = isCombo ? (item.basePrice ?? item.price ?? 0) : (item.price ?? 0);
+                          const rawDiscAmt = Number(item.discountAmount ?? item.discount ?? 0);
+                          const isFixed = item.discountType === 'fixed' || (item.discountType == null && item.discountAmount > 0 && !item.discount);
+                          if (isFixed) {
+                            const effectiveDisc = Math.min(rawDiscAmt, discountBasis);
+                            return `-$${effectiveDisc.toFixed(2)}`;
+                          } else {
+                            return `-${rawDiscAmt}%`;
+                          }
+                        })()}
                       </Text>
                     </View>
                   </View>
@@ -847,11 +856,16 @@ const CartItemRow = React.memo(
                     isPhone && { fontSize: 14, minWidth: 0 },
                   ]}
                 >
-                  ${((item.price || 0) * item.qty - (
-                    (item.discountType === 'fixed' || (item.discountType == null && item.discountAmount > 0 && !item.discount))
-                      ? (Number(item.discountAmount ?? item.discount ?? 0) * item.qty)
-                      : ((item.price || 0) * item.qty * (Number(item.discountAmount ?? item.discount ?? 0) / 100))
-                  )).toFixed(2)}
+                  ${(() => {
+                    const isCombo = item.isCombo === true || String(item.isCombo) === "1" || item.isCombo === 1;
+                    const discountBasis = isCombo ? (item.basePrice ?? item.price ?? 0) : (item.price ?? 0);
+                    const discAmt = Number(item.discountAmount ?? item.discount ?? 0);
+                    const isFixed = item.discountType === 'fixed' || (item.discountType == null && item.discountAmount > 0 && !item.discount);
+                    const itemDiscount = discAmt > 0
+                      ? (isFixed ? (Math.min(discAmt, discountBasis) * item.qty) : ((discountBasis * (discAmt / 100)) * item.qty))
+                      : 0;
+                    return ((item.price || 0) * item.qty - itemDiscount);
+                  })().toFixed(2)}
                 </Text>
               </View>
             </View>
@@ -1118,6 +1132,8 @@ export default React.memo(function CartSidebar({ width = 400 }: CartSidebarProps
         const isVoided = "status" in item && item.status === "VOIDED";
         if (isVoided) return acc;
 
+        const isCombo = item.isCombo === true || String(item.isCombo) === "1" || item.isCombo === 1;
+        const discountBasis = isCombo ? (item.basePrice ?? item.price ?? 0) : (item.price ?? 0);
         const baseTotal = (item.price || 0) * item.qty;
         let itemDiscount = 0;
         const discAmt = Number(item.discountAmount ?? item.discount ?? 0);
@@ -1125,9 +1141,9 @@ export default React.memo(function CartSidebar({ width = 400 }: CartSidebarProps
 
         if (discAmt > 0) {
           if (discType === 'percentage') {
-            itemDiscount = baseTotal * (discAmt / 100);
+            itemDiscount = (discountBasis * (discAmt / 100)) * item.qty;
           } else {
-            itemDiscount = discAmt * item.qty;
+            itemDiscount = Math.min(discAmt, discountBasis) * item.qty;
           }
         }
 

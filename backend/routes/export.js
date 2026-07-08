@@ -24,7 +24,17 @@ router.post('/download-pdf', async (req, res) => {
     const { reportData } = req.body;
     if (!reportData) return res.status(400).json({ error: 'Report data is required' });
 
+    const pool = await poolPromise;
     let startDateStr = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Singapore' });
+    try {
+      const activeDayRes = await pool.request().query("SELECT TOP 1 StartDate FROM DateEntry ORDER BY CreatedDate DESC");
+      if (activeDayRes.recordset.length > 0) {
+        const activeStartDate = activeDayRes.recordset[0].StartDate;
+        startDateStr = activeStartDate instanceof Date ? activeStartDate.toISOString().split("T")[0] : activeStartDate;
+      }
+    } catch (dbErr) {
+      console.error("Error reading active business day in export:", dbErr);
+    }
     let endDateStr = startDateStr;
     if (reportData.period) {
       const dates = reportData.period.match(/\d{4}-\d{2}-\d{2}/g);
@@ -34,7 +44,6 @@ router.post('/download-pdf', async (req, res) => {
       }
     }
 
-    const pool = await poolPromise;
     const enrichedData = await fetchFullReportData(startDateStr, endDateStr, pool);
 
     const docDef = await generateSalesReportPdf(enrichedData);
@@ -180,14 +189,23 @@ function isInvalidRecipientError(mailErr) {
 
 router.post('/email-pdf', async (req, res) => {
   let pdfBuffer;
+  const pool = await poolPromise;
   let startDateStr = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Singapore' });
+  try {
+    const activeDayRes = await pool.request().query("SELECT TOP 1 StartDate FROM DateEntry ORDER BY CreatedDate DESC");
+    if (activeDayRes.recordset.length > 0) {
+      const activeStartDate = activeDayRes.recordset[0].StartDate;
+      startDateStr = activeStartDate instanceof Date ? activeStartDate.toISOString().split("T")[0] : activeStartDate;
+    }
+  } catch (dbErr) {
+    console.error("Error reading active business day in export:", dbErr);
+  }
   let endDateStr = startDateStr;
   try {
     const { reportData, email } = req.body;
     if (!reportData) {
       return res.status(400).json({ success: false, error: 'Report data is required' });
     }
-
     if (reportData.period) {
       const dates = reportData.period.match(/\d{4}-\d{2}-\d{2}/g);
       if (dates && dates.length > 0) {
@@ -196,7 +214,6 @@ router.post('/email-pdf', async (req, res) => {
       }
     }
 
-    const pool = await poolPromise;
     const enrichedData = await fetchFullReportData(startDateStr, endDateStr, pool);
 
     const recipientCheck = normalizeAndValidateRecipient(email);

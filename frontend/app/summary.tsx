@@ -31,6 +31,7 @@ import { useAuthStore } from "@/stores/authStore";
 import CancelOrderModal from "../components/CancelOrderModal";
 import VoidItemModal from "../components/VoidItemModal";
 import DiscountModal from "../components/DiscountModal";
+import ItemDiscountModal from "../components/ItemDiscountModal";
 import ServerSelectionModal from "../components/ServerSelectionModal";
 import UniversalPrinter from "../components/UniversalPrinter";
 import {
@@ -95,6 +96,7 @@ export default function SummaryScreen() {
 
   const [showDiscount, setShowDiscount] = useState(false);
   const [showGstModal, setShowGstModal] = useState(false);
+  const [showItemDiscount, setShowItemDiscount] = useState(false);
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [cancelReasons, setCancelReasons] = useState<
     Array<{ CRCode: string; CRName: string }>
@@ -136,6 +138,11 @@ export default function SummaryScreen() {
   const [isSplitMode, setIsSplitMode] = useState(false);
   const [splitType, setSplitType] = useState<"items" | "parts">("items");
   const [partCount, setPartCount] = useState<number>(2);
+  const [showPromoModal, setShowPromoModal] = useState(false);
+  const [promoCodeInput, setPromoCodeInput] = useState("");
+  const [isApplyingPromo, setIsApplyingPromo] = useState(false);
+  const [availablePromos, setAvailablePromos] = useState<any[]>([]);
+  const [loadingPromos, setLoadingPromos] = useState(false);
 
   const [loyaltyPhone, setLoyaltyPhone] = useState("");
   const [loyaltyName, setLoyaltyName] = useState("");
@@ -599,6 +606,93 @@ export default function SummaryScreen() {
     }
   };
 
+  const handlePromoCode = async (code: string) => {
+    if (!code || code.trim() === "") {
+      showToast({ type: "warning", message: "Enter Promo Code" });
+      return;
+    }
+    try {
+      setIsApplyingPromo(true);
+      const token = useAuthStore.getState().token;
+      const res = await fetch(`${API_URL}/api/members/promocode/${encodeURIComponent(code.trim())}`, {
+        headers: {
+          ...(token ? { "Authorization": `Bearer ${token}` } : {})
+        }
+      });
+      if (!res.ok) {
+        let errMsg = "Invalid Promo Code";
+        try {
+          const errorData = await res.json();
+          errMsg = errorData.error || errMsg;
+        } catch (_) {}
+        showToast({ type: "error", message: errMsg });
+        return;
+      }
+      const data = await res.json();
+      const promoAmount = parseFloat(data.Promoamount) || 0;
+      if (promoAmount <= 0) {
+        showToast({ type: "warning", message: "No value", subtitle: "Promo code has 0 amount" });
+        return;
+      }
+
+      const discountData = {
+        applied: true,
+        type: "fixed" as const,
+        value: promoAmount,
+        label: `Promo: ${code.trim()}`,
+      };
+      applyDiscount(discountData);
+
+      const currentContext = getOrderContext();
+      if (currentContext) {
+        updateOrderDiscount(currentContext, discountData);
+      }
+      showToast({ type: "success", message: "Promo Code Applied", subtitle: `Discount of ${currencySymbol}${promoAmount.toFixed(2)} applied` });
+      setShowPromoModal(false);
+      setPromoCodeInput("");
+    } catch (err: any) {
+      console.error("Error applying promo code:", err);
+      showToast({ type: "error", message: "Failed to apply promo code" });
+    } finally {
+      setIsApplyingPromo(false);
+    }
+  };
+
+  const fetchAvailablePromos = async () => {
+    try {
+      setLoadingPromos(true);
+      const token = useAuthStore.getState().token;
+      const res = await fetch(`${API_URL}/api/members/promocodes/all`, {
+        headers: {
+          ...(token ? { "Authorization": `Bearer ${token}` } : {})
+        }
+      });
+      const data = await res.json();
+      if (Array.isArray(data)) {
+        setAvailablePromos(data);
+      }
+    } catch (err) {
+      console.error("Error fetching available promos:", err);
+    } finally {
+      setLoadingPromos(false);
+    }
+  };
+
+  useEffect(() => {
+    if (showPromoModal) {
+      fetchAvailablePromos();
+    }
+  }, [showPromoModal]);
+
+  const filteredPromos = useMemo(() => {
+    const query = promoCodeInput.trim().toLowerCase();
+    if (!query) return availablePromos;
+    return availablePromos.filter(p => 
+      (p.Promocode || "").toLowerCase().includes(query) ||
+      (p.Name || "").toLowerCase().includes(query)
+    );
+  }, [availablePromos, promoCodeInput]);
+
   const { width: SCREEN_W, height: SCREEN_H } = useWindowDimensions();
   const isLandscape = SCREEN_W > SCREEN_H;
   const isTablet = Math.min(SCREEN_W, SCREEN_H) >= 500;
@@ -1032,6 +1126,8 @@ export default function SummaryScreen() {
     return loyaltyDiscountItems.length > 0 ? loyaltyDiscountItems : cart;
   }, [loyaltyDiscountItems, cart]);
 
+
+
   // 🖥️ CUSTOMER DISPLAY REAL-TIME SYNC
   useEffect(() => {
     if (context && finalItems && finalItems.length > 0) {
@@ -1075,6 +1171,8 @@ export default function SummaryScreen() {
       const isVoided = (item as any).status === "VOIDED";
       if (isVoided) return acc;
       
+      const isCombo = item.isCombo === true || String(item.isCombo) === "1" || item.isCombo === 1;
+      const discountBasis = isCombo ? (item.basePrice ?? item.price ?? 0) : (item.price ?? 0);
       const baseTotal = (item.price || 0) * item.qty;
       let itemDiscount = 0;
       const discAmt = Number(item.discountAmount ?? item.discount ?? 0);
@@ -1082,9 +1180,9 @@ export default function SummaryScreen() {
       
       if (discAmt > 0) {
         if (discType === 'percentage') {
-          itemDiscount = baseTotal * (discAmt / 100);
+          itemDiscount = (discountBasis * (discAmt / 100)) * item.qty;
         } else {
-          itemDiscount = discAmt * item.qty;
+          itemDiscount = Math.min(discAmt, discountBasis) * item.qty;
         }
       }
 
@@ -1108,8 +1206,8 @@ export default function SummaryScreen() {
   const discountAmount = useMemo(() => {
     if (!discountInfo?.applied) return 0;
     if (discountInfo.type === "percentage")
-      return (subtotal * discountInfo.value) / 100;
-    return discountInfo.value;
+      return Math.min((subtotal * discountInfo.value) / 100, subtotal);
+    return Math.min(discountInfo.value, subtotal);
   }, [discountInfo, subtotal]);
 
   const netAfterDiscount = useMemo(() => subtotal - discountAmount, [subtotal, discountAmount]);
@@ -1296,29 +1394,62 @@ export default function SummaryScreen() {
               style={[
                 styles.actionBtn,
                 {
-                  backgroundColor: Theme.warningBg,
-                  borderColor: Theme.warningBorder,
+                  backgroundColor: Theme.primaryLight,
+                  borderColor: Theme.primaryBorder,
                   borderWidth: 1,
                 },
                 !isTablet &&
                   isLandscape && { height: 32, paddingHorizontal: 8 },
               ]}
-              onPress={handleFOC}
+              onPress={() => {
+                setShowItemDiscount(true);
+              }}
             >
               <Ionicons
-                name="gift-outline"
+                name="pricetag"
                 size={!isTablet && isLandscape ? 16 : 18}
-                color={Theme.warning}
+                color={Theme.primary}
               />
               {isLandscape && (
                 <Text
                   style={[
                     styles.actionBtnText,
-                    { color: Theme.warning },
+                    { color: Theme.primary },
                     !isTablet && isLandscape && { fontSize: 10 },
                   ]}
                 >
-                  FOC
+                  Item Discount
+                </Text>
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[
+                styles.actionBtn,
+                {
+                  backgroundColor: "#F5F3FF",
+                  borderColor: "#DDD6FE",
+                  borderWidth: 1,
+                },
+                !isTablet &&
+                  isLandscape && { height: 32, paddingHorizontal: 8 },
+              ]}
+              onPress={() => setShowPromoModal(true)}
+            >
+              <Ionicons
+                name="barcode-outline"
+                size={!isTablet && isLandscape ? 16 : 18}
+                color="#7C3AED"
+              />
+              {isLandscape && (
+                <Text
+                  style={[
+                    styles.actionBtnText,
+                    { color: "#7C3AED" },
+                    !isTablet && isLandscape && { fontSize: 10 },
+                  ]}
+                >
+                  Promo Code
                 </Text>
               )}
             </TouchableOpacity>
@@ -1464,7 +1595,16 @@ export default function SummaryScreen() {
                         ))}
                     {isSC && settings.serviceChargePercentage > 0 && item.status !== "VOIDED" && (
                       <Text style={[styles.sub, { color: Theme.primary, fontFamily: Fonts.bold, marginTop: 4 }]}>
-                        Item Service Charge ({settings.serviceChargePercentage}%): {currencySymbol}{((((item.price || 0) * item.qty) - ((item.discountType === 'fixed' || (item.discountType == null && item.discountAmount > 0 && !item.discount)) ? (Number(item.discountAmount ?? item.discount ?? 0) * item.qty) : (((item.price || 0) * item.qty) * (Number(item.discountAmount ?? item.discount ?? 0) / 100)))) * (settings.serviceChargePercentage / 100)).toFixed(2)}
+                        Item Service Charge ({settings.serviceChargePercentage}%): {currencySymbol}{(() => {
+                          const isCombo = item.isCombo === true || String(item.isCombo) === "1" || item.isCombo === 1;
+                          const discountBasis = isCombo ? (item.basePrice ?? item.price ?? 0) : (item.price ?? 0);
+                          const discAmt = Number(item.discountAmount ?? item.discount ?? 0);
+                          const isFixed = item.discountType === 'fixed' || (item.discountType == null && item.discountAmount > 0 && !item.discount);
+                          const itemDiscount = discAmt > 0
+                            ? (isFixed ? (Math.min(discAmt, discountBasis) * item.qty) : ((discountBasis * (discAmt / 100)) * item.qty))
+                            : 0;
+                          return ((item.price || 0) * item.qty - itemDiscount) * (settings.serviceChargePercentage / 100);
+                        })().toFixed(2)}
                       </Text>
                     )}
                   </View>
@@ -1477,9 +1617,18 @@ export default function SummaryScreen() {
                         </Text>
                         <View style={{ backgroundColor: (Theme as any).successBg || '#dcfce7', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 }}>
                           <Text style={{ color: Theme.success || '#16a34a', fontSize: 11, fontFamily: Fonts.bold }}>
-                            {item.discountType === 'fixed' || (item.discountType == null && item.discountAmount > 0 && !item.discount) 
-                              ? `-${currencySymbol}${Number(item.discountAmount ?? item.discount).toFixed(2)}`
-                              : `-${Number(item.discountAmount ?? item.discount)}%`}
+                            {(() => {
+                              const isCombo = item.isCombo === true || String(item.isCombo) === "1" || item.isCombo === 1;
+                              const discountBasis = isCombo ? (item.basePrice ?? item.price ?? 0) : (item.price ?? 0);
+                              const rawDiscAmt = Number(item.discountAmount ?? item.discount ?? 0);
+                              const isFixed = item.discountType === 'fixed' || (item.discountType == null && item.discountAmount > 0 && !item.discount);
+                              if (isFixed) {
+                                const effectiveDisc = Math.min(rawDiscAmt, discountBasis);
+                                return `-${currencySymbol}${effectiveDisc.toFixed(2)}`;
+                              } else {
+                                return `-${rawDiscAmt}%`;
+                              }
+                            })()}
                           </Text>
                         </View>
                       </View>
@@ -1491,11 +1640,16 @@ export default function SummaryScreen() {
                       ]}
                     >
                       {currencySymbol}
-                      {((item.price || 0) * item.qty - (
-                        (item.discountType === 'fixed' || (item.discountType == null && item.discountAmount > 0 && !item.discount)) 
-                        ? (Number(item.discountAmount ?? item.discount ?? 0) * item.qty) 
-                        : ((item.price || 0) * item.qty * (Number(item.discountAmount ?? item.discount ?? 0) / 100))
-                      )).toFixed(2)}
+                      {(() => {
+                        const isCombo = item.isCombo === true || String(item.isCombo) === "1" || item.isCombo === 1;
+                        const discountBasis = isCombo ? (item.basePrice ?? item.price ?? 0) : (item.price ?? 0);
+                        const discAmt = Number(item.discountAmount ?? item.discount ?? 0);
+                        const isFixed = item.discountType === 'fixed' || (item.discountType == null && item.discountAmount > 0 && !item.discount);
+                        const itemDiscount = discAmt > 0
+                          ? (isFixed ? (Math.min(discAmt, discountBasis) * item.qty) : ((discountBasis * (discAmt / 100)) * item.qty))
+                          : 0;
+                        return ((item.price || 0) * item.qty - itemDiscount);
+                      })().toFixed(2)}
                     </Text>
                   </View>
 
@@ -2081,6 +2235,11 @@ export default function SummaryScreen() {
         currentTotal={subtotal}
       />
 
+      <ItemDiscountModal
+        visible={showItemDiscount}
+        onClose={() => setShowItemDiscount(false)}
+      />
+
       <CancelOrderModal
         visible={showCancelModal}
         onClose={() => {
@@ -2095,6 +2254,133 @@ export default function SummaryScreen() {
         loadingReasons={loadingReasons}
         isCancelling={isCancellingOrder}
       />
+
+      {/* PROMO CODE MODAL */}
+      <Modal
+        visible={showPromoModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowPromoModal(false)}
+      >
+        <TouchableWithoutFeedback onPress={() => setShowPromoModal(false)}>
+          <View style={styles.modalOverlay}>
+            <TouchableWithoutFeedback>
+              <View style={[styles.modalContent, { maxWidth: 420, maxHeight: "85%" }]}>
+                <View style={styles.modalHeader}>
+                  <Text style={styles.modalTitle}>Promo Codes</Text>
+                  <TouchableOpacity onPress={() => setShowPromoModal(false)}>
+                    <Ionicons name="close" size={24} color={Theme.textPrimary} />
+                  </TouchableOpacity>
+                </View>
+
+                <Text style={styles.modalDesc}>
+                  Select a saved promo code or search/type to apply.
+                </Text>
+
+                <TextInput
+                  style={[
+                    styles.searchInput,
+                    {
+                      width: "100%",
+                      marginTop: 5,
+                      marginBottom: 15,
+                      backgroundColor: Theme.bgInput,
+                      borderWidth: 1,
+                      borderColor: Theme.border,
+                      borderRadius: 12,
+                      padding: 12,
+                      fontFamily: Fonts.medium,
+                      fontSize: 16,
+                      color: Theme.textPrimary,
+                    },
+                  ]}
+                  placeholder="Search promo or type code manually..."
+                  placeholderTextColor={Theme.textMuted}
+                  value={promoCodeInput}
+                  onChangeText={setPromoCodeInput}
+                  autoCapitalize="characters"
+                  autoFocus
+                />
+
+                {loadingPromos ? (
+                  <ActivityIndicator size="small" color={Theme.primary} style={{ marginVertical: 20 }} />
+                ) : (
+                  <ScrollView style={{ maxHeight: 220, marginBottom: 20 }} showsVerticalScrollIndicator={true}>
+                    {filteredPromos.length === 0 ? (
+                      <Text style={{ textAlign: "center", color: Theme.textMuted, marginVertical: 15, fontFamily: Fonts.regular }}>
+                        No active promo codes found
+                      </Text>
+                    ) : (
+                      filteredPromos.map((item) => (
+                        <TouchableOpacity
+                          key={item.MemberId}
+                          style={{
+                            flexDirection: "row",
+                            justifyContent: "space-between",
+                            alignItems: "center",
+                            padding: 12,
+                            borderRadius: 12,
+                            backgroundColor: Theme.bgMuted,
+                            marginBottom: 8,
+                            borderWidth: 1,
+                            borderColor: Theme.border,
+                          }}
+                          onPress={() => handlePromoCode(item.Promocode)}
+                        >
+                          <View style={{ flex: 1, marginRight: 10 }}>
+                            <Text style={{ fontFamily: Fonts.bold, fontSize: 15, color: Theme.textPrimary }}>
+                              {item.Promocode}
+                            </Text>
+                            <Text style={{ fontFamily: Fonts.medium, fontSize: 12, color: Theme.textSecondary, marginTop: 2 }}>
+                              {item.Name} ({item.Phone})
+                            </Text>
+                          </View>
+                          <Text style={{ fontFamily: Fonts.black, fontSize: 16, color: Theme.primary }}>
+                            {currencySymbol}{Number(item.Promoamount || 0).toFixed(2)}
+                          </Text>
+                        </TouchableOpacity>
+                      ))
+                    )}
+                  </ScrollView>
+                )}
+
+                <View style={{ flexDirection: "row", gap: 12, width: "100%" }}>
+                  <TouchableOpacity
+                    style={[
+                      styles.mergeConfirmBtn,
+                      styles.mergeConfirmBtnCancel,
+                      { paddingVertical: 12 },
+                    ]}
+                    onPress={() => {
+                      setShowPromoModal(false);
+                      setPromoCodeInput("");
+                    }}
+                  >
+                    <Text style={styles.mergeConfirmBtnCancelText}>Cancel</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[
+                      styles.mergeConfirmBtn,
+                      styles.mergeConfirmBtnPrimary,
+                      { paddingVertical: 12 },
+                      (!promoCodeInput.trim() || isApplyingPromo) && { opacity: 0.6 },
+                    ]}
+                    onPress={() => handlePromoCode(promoCodeInput)}
+                    disabled={!promoCodeInput.trim() || isApplyingPromo}
+                  >
+                    {isApplyingPromo ? (
+                      <ActivityIndicator size="small" color="#fff" />
+                    ) : (
+                      <Text style={styles.mergeConfirmBtnPrimaryText}>Apply</Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </TouchableWithoutFeedback>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
 
       <VoidItemModal
         visible={showVoidModal}
@@ -2229,6 +2515,28 @@ export default function SummaryScreen() {
                       />
                     </View>
                     <Text style={styles.billOptionText}>Merge Bill</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={styles.billOptionItem}
+                    onPress={() => {
+                      setShowBillOptions(false);
+                      handleFOC();
+                    }}
+                  >
+                    <View
+                      style={[
+                        styles.billOptionIcon,
+                        { backgroundColor: Theme.warningBg },
+                      ]}
+                    >
+                      <Ionicons
+                        name="gift-outline"
+                        size={20}
+                        color={Theme.warning}
+                      />
+                    </View>
+                    <Text style={styles.billOptionText}>FOC</Text>
                   </TouchableOpacity>
 
 

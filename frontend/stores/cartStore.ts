@@ -55,6 +55,7 @@ export type CartItem = {
   isServiceCharge?: number | boolean;
   isCombo?: boolean;
   comboSelections?: any[];
+  IsDiscountAllowed?: number | boolean;
 };
 
 export type DiscountInfo = {
@@ -241,6 +242,9 @@ const normalizeCartItem = (item: any, fallback: Partial<CartItem> = {}): CartIte
     isServiceCharge: item.isServiceCharge !== undefined ? item.isServiceCharge : (fallback.isServiceCharge !== undefined ? fallback.isServiceCharge : 0),
     isCombo: getNormalizedBoolean(item.isCombo, item.IsCombo, item.ComboDetailsJSON, fallback.isCombo),
     comboSelections: incomingComboSelections || _comboGroups || fallback.comboSelections || undefined,
+    IsDiscountAllowed: item.IsDiscountAllowed !== undefined ? item.IsDiscountAllowed : (fallback.IsDiscountAllowed !== undefined ? fallback.IsDiscountAllowed : 1),
+    discountAmount: Number(item.discountAmount ?? item.discount ?? item.DiscountAmount ?? fallback.discountAmount ?? discount),
+    discountType: item.discountType || item.DiscountType || fallback.discountType || "percentage",
   };
 };
 
@@ -331,10 +335,12 @@ type CartState = {
       oil?: string;
       sugar?: string;
       discount?: number;
-      isTakeaway?: boolean;
+      discountAmount?: number;
+      discountType?: string;
       isVoided?: boolean;
     },
   ) => void;
+  applyBulkItemDiscount: (value: number, type: "percentage" | "fixed") => void;
 
   syncCartWithDB: (contextId: string, isImmediate?: boolean) => Promise<void>;
   fetchCartFromDB: (tableId: string) => Promise<void>;
@@ -1024,6 +1030,44 @@ export const useCartStore = create<CartState>()(
           };
         });
         
+        const tableId = useOrderContextStore.getState().currentOrder?.tableId;
+        if (tableId) {
+          socket.emit("cart_change", { 
+            tableId, 
+            contextId: currentContextId, 
+            items: get().carts[currentContextId], 
+            lastUpdate: Date.now() 
+          });
+        }
+
+        get().syncCartWithDB(currentContextId, true);
+      },
+
+      applyBulkItemDiscount: (value, type) => {
+        const { currentContextId } = get();
+        if (!currentContextId) return;
+
+        set((state) => {
+          const currentCart = state.carts[currentContextId] || [];
+          const updatedCart = currentCart.map((item) => {
+            const isAllowed = item.IsDiscountAllowed === true || item.IsDiscountAllowed === 1 || Number(item.IsDiscountAllowed) === 1;
+            if (isAllowed) {
+              return {
+                ...item,
+                discount: value,
+                discountAmount: value,
+                discountType: type,
+              };
+            }
+            return item;
+          });
+
+          return {
+            carts: { ...state.carts, [currentContextId]: updatedCart },
+            lastLocalUpdate: { ...state.lastLocalUpdate, [currentContextId]: Date.now() }
+          };
+        });
+
         const tableId = useOrderContextStore.getState().currentOrder?.tableId;
         if (tableId) {
           socket.emit("cart_change", { 

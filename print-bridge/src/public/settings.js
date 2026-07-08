@@ -104,6 +104,11 @@ function populateGeneralForm() {
   document.getElementById('bridgeToken').value    = currentConfig.bridgeToken    || '';
   document.getElementById('pollIntervalMs').value = currentConfig.pollIntervalMs || 2000;
   document.getElementById('port').value           = currentConfig.port           || 3050;
+
+  const cd = currentConfig.customerDisplay || {};
+  document.getElementById('customerDisplayEnabled').checked      = cd.enabled !== false;
+  document.getElementById('customerDisplayFullscreen').checked   = cd.fullscreen !== false;
+  document.getElementById('customerDisplayAutoRecovery').checked = cd.autoRecovery !== false;
 }
 
 // ─── Save General Config ──────────────────────────────────────────────
@@ -115,6 +120,12 @@ async function saveGeneralConfig(e) {
   currentConfig.bridgeToken    = document.getElementById('bridgeToken').value.trim();
   currentConfig.pollIntervalMs = parseInt(document.getElementById('pollIntervalMs').value);
   currentConfig.port           = parseInt(document.getElementById('port').value);
+
+  currentConfig.customerDisplay = {
+    enabled:      document.getElementById('customerDisplayEnabled').checked,
+    fullscreen:   document.getElementById('customerDisplayFullscreen').checked,
+    autoRecovery: document.getElementById('customerDisplayAutoRecovery').checked
+  };
 
   const ok = await saveConfig();
   setLoading('saveGeneralBtn', false);
@@ -270,8 +281,8 @@ async function handleBackendSubmit(e) {
   const enabled = document.getElementById('backendEnabled').checked;
 
   // Validate URL
-  if (!url.startsWith('https://')) {
-    showModalError('URL must start with https://');
+  if (!url.startsWith('https://') && !url.startsWith('http://')) {
+    showModalError('URL must start with http:// or https://');
     return;
   }
 

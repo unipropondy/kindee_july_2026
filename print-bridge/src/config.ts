@@ -95,10 +95,11 @@ const defaultConfig: BridgeConfig = {
     },
     {
       name: 'QR POS',
-      url: 'https://new-qrcode-production-fe4e.up.railway.app',
+      url: 'https://new-qrcode-production.up.railway.app',
       enabled: true
     }
   ]
+  
 };
 
 function loadConfig(): BridgeConfig {

@@ -14,6 +14,7 @@ interface CalendarPickerProps {
   onRangeChange?: (start: string, end: string) => void;
   isRangeMode?: boolean;
   onModeChange?: (isRange: boolean) => void;
+  onlyAllowToday?: boolean;
 }
 
 type ViewMode = "calendar" | "month" | "year";
@@ -25,7 +26,8 @@ export default function CalendarPicker({
   rangeEnd, 
   onRangeChange,
   isRangeMode = false,
-  onModeChange
+  onModeChange,
+  onlyAllowToday = false
 }: CalendarPickerProps) {
   const [viewMode, setViewMode] = useState<ViewMode>("calendar");
   const [viewDate, setViewDate] = useState(new Date(selectedDate));
@@ -47,6 +49,9 @@ export default function CalendarPicker({
   }, [viewDate]);
 
   const handleDatePress = (date: Date) => {
+    if (onlyAllowToday && !isSameDay(date, new Date())) {
+      return;
+    }
     if (Platform.OS !== "web") {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     }
@@ -143,20 +148,22 @@ export default function CalendarPicker({
   return (
     <View style={styles.container}>
       {/* Mode Toggle inside Calendar */}
-      <View style={styles.modeToggleContainer}>
-         <TouchableOpacity 
-           onPress={() => onModeChange?.(false)}
-           style={[styles.modeBtn, !isRangeMode && styles.activeModeBtn]}
-         >
-           <Text style={[styles.modeBtnText, !isRangeMode && styles.activeModeBtnText]}>SINGLE</Text>
-         </TouchableOpacity>
-         <TouchableOpacity 
-           onPress={() => onModeChange?.(true)}
-           style={[styles.modeBtn, isRangeMode && styles.activeModeBtn]}
-         >
-           <Text style={[styles.modeBtnText, isRangeMode && styles.activeModeBtnText]}>RANGE</Text>
-         </TouchableOpacity>
-      </View>
+      {!!onModeChange && (
+        <View style={styles.modeToggleContainer}>
+          <TouchableOpacity 
+            onPress={() => onModeChange?.(false)}
+            style={[styles.modeBtn, !isRangeMode && styles.activeModeBtn]}
+          >
+            <Text style={[styles.modeBtnText, !isRangeMode && styles.activeModeBtnText]}>SINGLE</Text>
+          </TouchableOpacity>
+          <TouchableOpacity 
+            onPress={() => onModeChange?.(true)}
+            style={[styles.modeBtn, isRangeMode && styles.activeModeBtn]}
+          >
+            <Text style={[styles.modeBtnText, isRangeMode && styles.activeModeBtnText]}>RANGE</Text>
+          </TouchableOpacity>
+        </View>
+      )}
 
       <View style={styles.header}>
         <TouchableOpacity onPress={() => changeMonth(-1)} style={styles.navBtn}>
@@ -189,9 +196,13 @@ export default function CalendarPicker({
             }
           }
           const isRangePoint = isRangeStart || isRangeEnd;
+          const isToday = isSameDay(day, new Date());
+          const isDisabled = onlyAllowToday && !isToday;
+
           return (
             <TouchableOpacity
               key={i}
+              disabled={isDisabled}
               style={[
                 styles.day,
                 isSelected && styles.selectedDay,
@@ -199,7 +210,8 @@ export default function CalendarPicker({
                 isRangeMode && isInRange && styles.inRangeDay,
                 isRangeMode && isRangeStart && rangeEnd && { borderTopRightRadius: 0, borderBottomRightRadius: 0 },
                 isRangeMode && isRangeEnd && { borderTopLeftRadius: 0, borderBottomLeftRadius: 0 },
-                !isCurrentMonth && styles.otherMonthDay
+                !isCurrentMonth && styles.otherMonthDay,
+                isDisabled && { opacity: 0.25 }
               ]}
               onPress={() => handleDatePress(day)}
             >

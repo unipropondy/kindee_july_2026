@@ -10,6 +10,14 @@ router.post('/log', authenticateToken, async (req, res) => {
   const transaction = new sql.Transaction(pool);
   
   try {
+    // Day Start / Day End validation check
+    const activeDayRes = await pool.request().query("SELECT TOP 1 StartDate FROM DateEntry ORDER BY CreatedDate DESC");
+    if (activeDayRes.recordset.length === 0) {
+      return res.status(400).json({ success: false, error: "No active business date. Please Start Day first." });
+    }
+    const activeStartDate = activeDayRes.recordset[0].StartDate;
+    const formattedStartDate = activeStartDate instanceof Date ? activeStartDate.toISOString().split("T")[0] : activeStartDate;
+
     const {
       outletId, terminalCode, actionType, amount, tenderedAmount, changeAmount,
       orderId, reason, remark, openedByUserId, approvedByUserId, openSource, isSuccess
@@ -92,9 +100,10 @@ router.post('/log', authenticateToken, async (req, res) => {
           .input('ReferenceNo', orderId || '')
           .input('TerminalCode', sql.VarChar(50), finalTerminalCode)
           .input('CreatedBy', sql.VarChar(100), cashierName)
+          .input('startDate', sql.Date, formattedStartDate)
           .query(`
-            INSERT INTO CashInEntry (CashInNo, CashInDate, Amount, Reason, Remarks, PaymentMode, ReferenceNo, TerminalCode, CreatedBy, CreatedOn)
-            VALUES (@CashInNo, CAST(GETDATE() AS DATE), @Amount, @Reason, @Remarks, @PaymentMode, @ReferenceNo, @TerminalCode, @CreatedBy, GETDATE())
+            INSERT INTO CashInEntry (CashInNo, CashInDate, Amount, Reason, Remarks, PaymentMode, ReferenceNo, TerminalCode, CreatedBy, CreatedOn, start_date)
+            VALUES (@CashInNo, CAST(GETDATE() AS DATE), @Amount, @Reason, @Remarks, @PaymentMode, @ReferenceNo, @TerminalCode, @CreatedBy, GETDATE(), @startDate)
           `);
       } else if (actionType === 'CASH_OUT' && amount > 0) {
         // Fetch SGT date directly from remote SQL server clock (myerpcloud.dyndns.org)
@@ -113,9 +122,10 @@ router.post('/log', authenticateToken, async (req, res) => {
           .input('ReferenceNo', sql.VarChar(100), orderId || '')
           .input('TerminalCode', sql.VarChar(50), finalTerminalCode)
           .input('CreatedBy', sql.VarChar(100), cashierName)
+          .input('startDate', sql.Date, formattedStartDate)
           .query(`
-            INSERT INTO CashOutEntry (CashOutNo, CashOutDate, Amount, Reason, Remarks, PaymentMode, ReferenceNo, TerminalCode, CreatedBy, CreatedOn)
-            VALUES (@CashOutNo, CAST(GETDATE() AS DATE), @Amount, @Reason, @Remarks, @PaymentMode, @ReferenceNo, @TerminalCode, @CreatedBy, GETDATE())
+            INSERT INTO CashOutEntry (CashOutNo, CashOutDate, Amount, Reason, Remarks, PaymentMode, ReferenceNo, TerminalCode, CreatedBy, CreatedOn, start_date)
+            VALUES (@CashOutNo, CAST(GETDATE() AS DATE), @Amount, @Reason, @Remarks, @PaymentMode, @ReferenceNo, @TerminalCode, @CreatedBy, GETDATE(), @startDate)
           `);
       } else if (actionType === 'OPENING_FLOAT' && amount > 0) {
         // Update settlement opening totals
@@ -140,14 +150,15 @@ router.post('/log', authenticateToken, async (req, res) => {
         await denomReq
           .input('value', sql.Decimal(18, 2), amount)
           .input('createdBy', sql.VarChar(100), cashierName)
+          .input('startDate', sql.Date, formattedStartDate)
           .query(`
             DELETE FROM OpeningCashDenomination 
             WHERE CAST(CreatedOn as DATE) = CAST(GETDATE() as DATE)
             AND Type = 'OPEN'
             AND (ScreenType = 'CB' OR ScreenType IS NULL);
 
-            INSERT INTO OpeningCashDenomination (CurrencyValue, NoteCount, Type, CreatedBy, CreatedOn, ScreenType)
-            VALUES (@value, 1, 'OPEN', @createdBy, GETDATE(), 'CB');
+            INSERT INTO OpeningCashDenomination (CurrencyValue, NoteCount, Type, CreatedBy, CreatedOn, ScreenType, start_date)
+            VALUES (@value, 1, 'OPEN', @createdBy, GETDATE(), 'CB', @startDate);
           `);
       }
     }

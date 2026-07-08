@@ -242,6 +242,7 @@ async function syncToProfessionalTables(
   displayOrderId,
   items,
   userId,
+  startDate,
 ) {
   const isTakeaway =
     !tableId ||
@@ -346,8 +347,9 @@ async function syncToProfessionalTables(
       .input("pax", sql.Int, tablePax)
       .input("customerName", sql.NVarChar, tableCustomerName)
       .input("takeawayCharge", sql.Decimal(18, 2), initialTakeawayCharge)
+      .input("startDate", sql.Date, startDate)
       .query(
-        "INSERT INTO RestaurantOrderCur (OrderId, OrderNumber, OrderDateTime, Tableno, StatusCode, CreatedBy, CreatedOn, isOrderClosed, BusinessUnitId, PriorityCode, IsTakeAway, Pax, CustomerName, TakeawayCharge) VALUES (@orderId, @orderNo, GETDATE(), @tableNo, 1, @userId, GETDATE(), 0, @bizId, @priority, @isTakeaway, @pax, @customerName, @takeawayCharge)",
+        "INSERT INTO RestaurantOrderCur (OrderId, OrderNumber, OrderDateTime, Tableno, StatusCode, CreatedBy, CreatedOn, isOrderClosed, BusinessUnitId, PriorityCode, IsTakeAway, Pax, CustomerName, TakeawayCharge, start_date) VALUES (@orderId, @orderNo, GETDATE(), @tableNo, 1, @userId, GETDATE(), 0, @bizId, @priority, @isTakeaway, @pax, @customerName, @takeawayCharge, @startDate)",
       );
   }
 
@@ -372,6 +374,7 @@ async function syncToProfessionalTables(
   itemRequest.input("userId", sql.UniqueIdentifier, finalUserId);
   itemRequest.input("bizId", sql.UniqueIdentifier, bizId);
   itemRequest.input("orderNo", sql.NVarChar(100), cleanOrderNo);
+  itemRequest.input("startDate", sql.Date, startDate);
 
   let batchSql = "";
   const statusCodes = {
@@ -502,10 +505,11 @@ async function syncToProfessionalTables(
       const discVal = Number(item.discount || 0);
       let itemDiscount = 0;
       if (discVal > 0) {
+        const discountBasis = isCombo ? Number(item.basePrice || priceVal) : priceVal;
         if (resolvedDiscountType === "percentage") {
-          itemDiscount = priceVal * qtyVal * (discVal / 100);
+          itemDiscount = discountBasis * qtyVal * (discVal / 100);
         } else {
-          itemDiscount = discVal * qtyVal;
+          itemDiscount = Math.min(discVal, discountBasis) * qtyVal;
         }
       }
       const itemSubtotal = priceVal * qtyVal - itemDiscount;
@@ -544,8 +548,8 @@ async function syncToProfessionalTables(
       END
       ELSE
       BEGIN
-        INSERT INTO RestaurantOrderDetailCur (OrderDetailId, OrderId, DishId, Description, DishName,SongName, Quantity, PricePerUnit, ActualAmount, TotalDetailLineAmount, BaseAmount, StatusCode, CreatedBy, CreatedOn, ModifiersJSON, ComboDetailsJSON, OrderNumber, Remarks, isTakeAway, BusinessUnitId, OrderDateTime, DiscountAmount, DiscountType, ServiceCharge)
-        VALUES (@${p_id}, @orderId, @${p_dish}, @${p_name}, @${p_name}, @${p_song}, @${p_qty}, @${p_cost}, @${p_cost} * @${p_qty}, @${p_cost} * @${p_qty}, @${p_cost} * @${p_qty}, @${p_status}, @userId, CASE WHEN @${p_status} = 2 THEN GETDATE() ELSE @${p_created} END, @${p_mods}, @${p_combo}, @orderNo, @${p_note}, @${p_tw}, @bizId, GETDATE(), @${p_disc}, @${p_disctype}, @${p_sc});
+        INSERT INTO RestaurantOrderDetailCur (OrderDetailId, OrderId, DishId, Description, DishName,SongName, Quantity, PricePerUnit, ActualAmount, TotalDetailLineAmount, BaseAmount, StatusCode, CreatedBy, CreatedOn, ModifiersJSON, ComboDetailsJSON, OrderNumber, Remarks, isTakeAway, BusinessUnitId, OrderDateTime, DiscountAmount, DiscountType, ServiceCharge, start_date)
+        VALUES (@${p_id}, @orderId, @${p_dish}, @${p_name}, @${p_name}, @${p_song}, @${p_qty}, @${p_cost}, @${p_cost} * @${p_qty}, @${p_cost} * @${p_qty}, @${p_cost} * @${p_qty}, @${p_status}, @userId, CASE WHEN @${p_status} = 2 THEN GETDATE() ELSE @${p_created} END, @${p_mods}, @${p_combo}, @orderNo, @${p_note}, @${p_tw}, @bizId, GETDATE(), @${p_disc}, @${p_disctype}, @${p_sc}, @startDate);
       END
 
       -- Sync Modifiers for Item ${idx}
@@ -562,7 +566,7 @@ async function syncToProfessionalTables(
       });
 
     if (modItems.length > 0) {
-      batchSql += `INSERT INTO RestaurantmodifierdetailCur (OrderDetailId, OrderId, DishId, ModifierId, Quantity, Amount, ModifierName, CreatedBy, CreatedOn) VALUES `;
+      batchSql += `INSERT INTO RestaurantmodifierdetailCur (OrderDetailId, OrderId, DishId, ModifierId, Quantity, Amount, ModifierName, CreatedBy, CreatedOn, start_date) VALUES `;
       modItems.forEach((mod, midx) => {
         const pm_id = `mId${idx}_${midx}`,
           pm_qty = `mQty${idx}_${midx}`,
@@ -583,7 +587,7 @@ async function syncToProfessionalTables(
           sql.NVarChar(800),
           (mod.ModifierName || "").substring(0, 800),
         );
-        batchSql += `(@${p_id}, @orderId, @${p_dish}, @${pm_id}, @${pm_qty}, @${pm_amt}, @${pm_name}, @userId, GETDATE())${midx === modItems.length - 1 ? ";" : ","}`;
+        batchSql += `(@${p_id}, @orderId, @${p_dish}, @${pm_id}, @${pm_qty}, @${pm_amt}, @${pm_name}, @userId, GETDATE(), @startDate)${midx === modItems.length - 1 ? ";" : ","}`;
       });
     }
   });
@@ -769,6 +773,15 @@ router.post("/save-cart", async (req, res) => {
       entryStatus,
     } = req.body;
     const pool = await poolPromise;
+    
+    // Day Start / Day End validation check
+    const activeDayRes = await pool.request().query("SELECT TOP 1 StartDate FROM DateEntry ORDER BY CreatedDate DESC");
+    if (activeDayRes.recordset.length === 0) {
+      return res.status(400).json({ error: "No active business date. Please Start Day first." });
+    }
+    const activeStartDate = activeDayRes.recordset[0].StartDate;
+    const formattedStartDate = activeStartDate instanceof Date ? activeStartDate.toISOString().split("T")[0] : activeStartDate;
+
     const cleanId = String(tableId)
       .replace(/^\{|\}$/g, "")
       .trim();
@@ -836,6 +849,7 @@ router.post("/save-cart", async (req, res) => {
         currentOrderId,
         items || [],
         userId,
+        formattedStartDate,
       );
 
       // 🚀 CRITICAL: Update TableMaster INSIDE the same transaction
@@ -937,6 +951,7 @@ router.post("/send", async (req, res) => {
             d.ModifiersJSON, d.Remarks as note, d.isTakeAway as isTakeaway,
             ISNULL(d.DiscountAmount, 0) as discount,
             ISNULL(d.DiscountType, NULL) as discountType,
+            CAST(ISNULL(dish.IsDiscountAllowed, 1) AS INT) as IsDiscountAllowed,
             ISNULL(ckt.KitchenTypeCode, '2') as KitchenTypeCode, 
             ISNULL(ISNULL(ckt.KitchenTypeName, cat.CategoryName), 'KITCHEN') as KitchenTypeName,
             pm.PrinterPath as PrinterIP
@@ -1107,6 +1122,7 @@ router.get("/cart/:tableId", async (req, res) => {
           d.ModifiersJSON, d.ComboDetailsJSON, d.Remarks as note, d.isTakeAway as isTakeaway,
           ISNULL(d.DiscountAmount, 0) as discount,
           ISNULL(d.DiscountType, NULL) as discountType,
+          CAST(ISNULL(dish.IsDiscountAllowed, 1) AS INT) as IsDiscountAllowed,
           d.CreatedOn as DateCreated,
           CASE d.StatusCode 
             WHEN 1 THEN 'NEW' WHEN 2 THEN 'SENT' WHEN 3 THEN 'READY' 

@@ -17,16 +17,19 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
+  TouchableWithoutFeedback,
   useWindowDimensions,
   View,
 } from "react-native";
 import QRCode from "react-native-qrcode-svg";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import CalendarPicker from "@/components/CalendarPicker";
 import {
   SafeAreaView,
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
 import { useToast } from "../../components/Toast";
-import { formatToSingaporeTime } from "../../utils/timezoneHelper";
+import { formatToSingaporeTime, getSingaporeDateString } from "../../utils/timezoneHelper";
 
 import StoreSettingsModal from "@/components/payment/StoreSettingsModal";
 import GeneralSettingsModal from "@/components/settings/GeneralSettingsModal";
@@ -424,6 +427,90 @@ export default function Category() {
   const [guestNameInput, setGuestNameInput] = useState("");
   const [guestPaxInput, setGuestPaxInput] = useState("");
   const [isSavingGuest, setIsSavingGuest] = useState(false);
+  const [selectedBusinessDate, setSelectedBusinessDate] = useState<string | null>(null);
+  const [showBusinessCalendar, setShowBusinessCalendar] = useState(false);
+  const [isDayStarted, setIsDayStarted] = useState(false);
+  const [activeBusinessDay, setActiveBusinessDay] = useState<string | null>(null);
+  const [isStartingDay, setIsStartingDay] = useState(false);
+
+  const checkActiveBusinessDay = async () => {
+    try {
+      const res = await fetch(`${API_URL}/api/settlement/active-day`);
+      const data = await res.json();
+      if (data.success && data.active && data.startDate) {
+        setIsDayStarted(true);
+        setActiveBusinessDay(data.startDate);
+        setSelectedBusinessDate(data.startDate);
+        await AsyncStorage.setItem("selected_business_date", data.startDate);
+      } else {
+        setIsDayStarted(false);
+        setActiveBusinessDay(null);
+        setSelectedBusinessDate(null);
+      }
+    } catch (err) {
+      console.error("Failed to check active business day:", err);
+    }
+  };
+
+  useEffect(() => {
+    checkActiveBusinessDay();
+  }, []);
+
+  const handleStartDay = async () => {
+    if (!selectedBusinessDate) {
+      showToast({
+        type: "warning",
+        message: "No Date Selected",
+        subtitle: "Please select a date from the calendar first.",
+      });
+      return;
+    }
+    
+    setIsStartingDay(true);
+    try {
+      const res = await fetch(`${API_URL}/api/settlement/day-start`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          startDate: selectedBusinessDate,
+          username: user?.userName || user?.username || "admin"
+        })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        await AsyncStorage.setItem("selected_business_date", selectedBusinessDate);
+        setIsDayStarted(true);
+        setActiveBusinessDay(selectedBusinessDate);
+        showToast({
+          type: "success",
+          message: "Day Started",
+          subtitle: `Business day successfully started for ${formatDateToDMY(selectedBusinessDate)}.`,
+        });
+      } else {
+        showToast({
+          type: "error",
+          message: "Day Start Failed",
+          subtitle: data.error || "Could not start business day.",
+        });
+      }
+    } catch (err) {
+      console.error("Failed to start day:", err);
+      showToast({
+        type: "error",
+        message: "Network Error",
+        subtitle: "Failed to connect to the server.",
+      });
+    } finally {
+      setIsStartingDay(false);
+    }
+  };
+
+  const formatDateToDMY = (dateStr: string) => {
+    if (!dateStr) return "";
+    const parts = dateStr.split("-");
+    if (parts.length !== 3) return dateStr;
+    return `${parts[2]}-${parts[1]}-${parts[0]}`;
+  };
 
   // Removed global 'tables' selector for performance
   const getLockedName = useTableStatusStore((s: any) => s.getLockedName);
@@ -530,6 +617,7 @@ export default function Category() {
   // ——— Route guard: redirect to login if not authenticated ———
   useFocusEffect(
     React.useCallback(() => {
+      checkActiveBusinessDay();
       const { user: currentUser, loginDate, logout } = useAuthStore.getState();
       if (!currentUser) {
         router.replace("/login");
@@ -1023,6 +1111,15 @@ export default function Category() {
 
   const handleTablePress = React.useCallback(
     async (item: TableItem, tableData: any, isCheckoutAction?: boolean) => {
+      if (!isDayStarted) {
+        showToast({
+          type: "warning",
+          message: "Day Not Started",
+          subtitle: "Please select a date and click Start Day first.",
+        });
+        return;
+      }
+
       // 🌹 PAID QR TABLE: Block entry — table is paid and waiting for kitchen to serve
       const tablePaymentStatus = (tableData as any)?.paymentStatus !== undefined
         ? Number((tableData as any).paymentStatus)
@@ -1126,7 +1223,7 @@ export default function Category() {
 
       await proceedWithTable(item, tableData);
     },
-    [activeTab, router, isWaiter, enableGuestDetailsPopup],
+    [activeTab, router, isWaiter, enableGuestDetailsPopup, selectedBusinessDate, isDayStarted],
   );
 
   const proceedWithTable = async (item: TableItem, tableData: any) => {
@@ -1406,6 +1503,49 @@ export default function Category() {
             })}
           </View>
         </ScrollView>
+
+        {/* DATE PICKER & DAY START BUTTON */}
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginHorizontal: 8 }}>
+          <TouchableOpacity
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              backgroundColor: "#f5eee6",
+              borderWidth: 1,
+              borderColor: "#e5dec9",
+              borderRadius: 20,
+              paddingHorizontal: 16,
+              paddingVertical: 7,
+              gap: 10,
+              opacity: isDayStarted ? 0.7 : 1,
+            }}
+            disabled={isDayStarted}
+            onPress={() => setShowBusinessCalendar(true)}
+          >
+            <Text style={{ fontFamily: Fonts.bold, fontSize: 15, color: "#1c2d42" }}>
+              {selectedBusinessDate ? formatDateToDMY(selectedBusinessDate) : "dd-mm-yyyy"}
+            </Text>
+            <Ionicons name="calendar-outline" size={18} color="#556e8a" />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={{
+              backgroundColor: isDayStarted ? "#22c55e" : (Theme.primary || "#fd7e14"),
+              borderRadius: 20,
+              paddingHorizontal: 14,
+              paddingVertical: 7,
+              justifyContent: "center",
+              alignItems: "center",
+              opacity: isStartingDay ? 0.7 : 1,
+            }}
+            disabled={isDayStarted || isStartingDay}
+            onPress={handleStartDay}
+          >
+            <Text style={{ fontFamily: Fonts.bold, fontSize: 14, color: "#fff" }}>
+              {isDayStarted ? "Day Started" : "Start Day"}
+            </Text>
+          </TouchableOpacity>
+        </View>
 
         {/* RIGHT — Action Buttons */}
         <View style={[styles.navRightGroup, { gap: isTablet ? 8 : 6 }]}>
@@ -2393,6 +2533,74 @@ export default function Category() {
           <Ionicons name="sparkles" size={24} color="#fff" />
         </TouchableOpacity>
       )}
+
+      {/* Calendar Modal for Business Date */}
+      <Modal
+        visible={showBusinessCalendar}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowBusinessCalendar(false)}
+      >
+        <TouchableWithoutFeedback onPress={() => setShowBusinessCalendar(false)}>
+          <View style={styles.centerOverlay}>
+            <TouchableWithoutFeedback>
+              <View
+                style={{
+                  backgroundColor: Theme.bgCard,
+                  padding: 20,
+                  borderRadius: Theme.radiusLg,
+                  width: 350,
+                  elevation: 10,
+                  shadowColor: "#000",
+                  shadowOffset: { width: 0, height: 4 },
+                  shadowOpacity: 0.15,
+                  shadowRadius: 12,
+                }}
+              >
+                <View
+                  style={{
+                    flexDirection: "row",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    marginBottom: 15,
+                  }}
+                >
+                  <Text
+                    style={{
+                      fontSize: 16,
+                      fontFamily: Fonts.bold,
+                      color: Theme.textPrimary,
+                    }}
+                  >
+                    Select Business Date
+                  </Text>
+                  <TouchableOpacity onPress={() => setShowBusinessCalendar(false)}>
+                    <Ionicons name="close" size={24} color={Theme.textPrimary} />
+                  </TouchableOpacity>
+                </View>
+                <CalendarPicker
+                  selectedDate={selectedBusinessDate || getSingaporeDateString()}
+                  onDateChange={async (date) => {
+                    setSelectedBusinessDate(date);
+                    setShowBusinessCalendar(false);
+                    try {
+                      await AsyncStorage.setItem("selected_business_date", date);
+                      showToast({
+                        type: "success",
+                        message: "Date Saved",
+                        subtitle: `Business date set to ${formatDateToDMY(date)}.`,
+                      });
+                    } catch (err) {
+                      console.error("Failed to auto-save date:", err);
+                    }
+                  }}
+                  onlyAllowToday={true}
+                />
+              </View>
+            </TouchableWithoutFeedback>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
     </SafeAreaView>
   );
 }

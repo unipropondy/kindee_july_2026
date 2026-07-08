@@ -25,9 +25,13 @@ const getLocalBackendIP = (): string => {
 // __DEV__ is injected by Metro bundler. Provide a safe default for any non-Metro context.
 const isDev: boolean = typeof __DEV__ !== 'undefined' ? __DEV__ : false;
 
-export const API_URL: string = isDev
+export let API_URL: string = isDev
   ? `http://${getLocalBackendIP()}:3000`
   : (
     (typeof process !== 'undefined' ? process.env?.EXPO_PUBLIC_API_URL : undefined) ??
     'https://kindeejuly2026-production.up.railway.app'
   );
+
+export const setApiUrl = (url: string) => {
+  API_URL = url;
+};

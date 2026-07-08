@@ -46,6 +46,8 @@ type MemberType = {
   CurrentBalance?: number;
   Balance?: number;
   LowBalanceAlertSent?: boolean | number;
+  Promocode?: string;
+  Promoamount?: number;
 };
 
 const formatMoney = (amount: number) => {
@@ -309,6 +311,8 @@ export default function MembersScreen() {
     creditLimit: "1000",
     currentBalance: "0",
     balance: "0",
+    promocode: "",
+    promoamount: "",
   });
 
   const fetchMembers = useCallback(async () => {
@@ -360,7 +364,9 @@ export default function MembersScreen() {
       isActive: true,
       creditLimit: "1000", 
       currentBalance: "0", 
-      balance: "0" 
+      balance: "0",
+      promocode: "",
+      promoamount: ""
     });
     setSelectedCountryCode("+65");
     setLocalPhone("");
@@ -382,6 +388,8 @@ export default function MembersScreen() {
       creditLimit: String(member.CreditLimit ?? 0),
       currentBalance: String(member.CurrentBalance ?? 0),
       balance: String(member.Balance ?? 0),
+      promocode: member.Promocode || "",
+      promoamount: String(member.Promoamount ?? 0),
     });
     setModalMode("EDIT");
   };
@@ -412,6 +420,8 @@ export default function MembersScreen() {
           currentBalance: parseFloat(formData.currentBalance) || 0,
           balance: editingMember ? (editingMember.Balance ?? 0) : 0,
           userId: user?.userId,
+          promocode: formData.promocode.trim() || null,
+          promoamount: parseFloat(formData.promoamount) || 0,
         }),
       });
 
@@ -518,6 +528,16 @@ export default function MembersScreen() {
           <View style={styles.addressRow}>
             <Ionicons name="location-outline" size={14} color={Theme.textSecondary} style={{ marginTop: 2 }} />
             <Text style={styles.addressText} numberOfLines={2}>{item.Address}</Text>
+          </View>
+        ) : null}
+
+        {item.Promocode ? (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 15, marginTop: 6 }}>
+            <Ionicons name="gift-outline" size={14} color={Theme.primary} />
+            <Text style={{ fontSize: 13, fontFamily: Fonts.bold, color: Theme.textSecondary }}>
+              Promo Code: <Text style={{ color: Theme.primary }}>{item.Promocode}</Text>
+              {item.Promoamount ? ` (${formatMoney(item.Promoamount)})` : ''}
+            </Text>
           </View>
         ) : null}
 
@@ -694,6 +714,17 @@ export default function MembersScreen() {
                   <View style={{ flex: 1 }}>
                     <Text style={styles.inputLabel}>CONSUMED</Text>
                     <TextInput style={styles.sheetInput} keyboardType="numeric" value={formData.currentBalance} onChangeText={v => setFormData({ ...formData, currentBalance: v })} />
+                  </View>
+                </View>
+
+                <View style={styles.inputRow}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.inputLabel}>PROMO CODE</Text>
+                    <TextInput style={styles.sheetInput} value={formData.promocode} onChangeText={v => setFormData({ ...formData, promocode: v })} placeholder="Promo Code" placeholderTextColor={Theme.textMuted} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.inputLabel}>PROMO AMOUNT</Text>
+                    <TextInput style={styles.sheetInput} keyboardType="numeric" value={formData.promoamount} onChangeText={v => setFormData({ ...formData, promoamount: v })} placeholder="0.00" placeholderTextColor={Theme.textMuted} />
                   </View>
                 </View>
 

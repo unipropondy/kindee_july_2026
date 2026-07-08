@@ -30,7 +30,7 @@ router.get("/", async (req, res) => {
 router.post("/add", async (req, res) => {
   try {
     const pool = await poolPromise;
-    const { name, phone, email, creditLimit, currentBalance, balance, address, isActive, userId } = req.body;
+    const { name, phone, email, creditLimit, currentBalance, balance, address, isActive, userId, promocode, promoamount } = req.body;
     const result = await pool.request()
       .input("Name", sql.NVarChar, name)
       .input("Phone", sql.NVarChar, phone)
@@ -41,10 +41,12 @@ router.post("/add", async (req, res) => {
       .input("CurrentBalance", sql.Decimal(18, 2), parseFloat(currentBalance) || 0)
       .input("Balance", sql.Decimal(18, 2), parseFloat(balance) || 0)
       .input("CreatedBy", sql.UniqueIdentifier, userId || null)
+      .input("Promocode", sql.NVarChar, promocode || null)
+      .input("Promoamount", sql.Decimal(18, 2), parseFloat(promoamount) || 0)
       .query(`
         DECLARE @newId UNIQUEIDENTIFIER = NEWID();
-        INSERT INTO MemberMaster (MemberId, Name, Phone, Email, Address, IsActive, CreditLimit, CurrentBalance, Balance, CreatedBy)
-        VALUES (@newId, @Name, @Phone, @Email, @Address, @IsActive, @CreditLimit, @CurrentBalance, @Balance, @CreatedBy);
+        INSERT INTO MemberMaster (MemberId, Name, Phone, Email, Address, IsActive, CreditLimit, CurrentBalance, Balance, CreatedBy, Promocode, Promoamount)
+        VALUES (@newId, @Name, @Phone, @Email, @Address, @IsActive, @CreditLimit, @CurrentBalance, @Balance, @CreatedBy, @Promocode, @Promoamount);
         SELECT @newId AS MemberId;
       `);
     
@@ -57,7 +59,9 @@ router.post("/add", async (req, res) => {
         Phone: phone,
         CreditLimit: parseFloat(creditLimit) || 0,
         CurrentBalance: parseFloat(currentBalance) || 0,
-        IsActive: isActive !== undefined ? isActive : 1
+        IsActive: isActive !== undefined ? isActive : 1,
+        Promocode: promocode || null,
+        Promoamount: parseFloat(promoamount) || 0
       }
     });
   } catch (err) {
@@ -69,7 +73,7 @@ router.post("/add", async (req, res) => {
 router.post("/update", async (req, res) => {
   try {
     const pool = await poolPromise;
-    const { memberId, name, phone, email, creditLimit, currentBalance, balance, address, isActive, userId } = req.body;
+    const { memberId, name, phone, email, creditLimit, currentBalance, balance, address, isActive, userId, promocode, promoamount } = req.body;
     await pool.request()
       .input("Id", sql.UniqueIdentifier, memberId)
       .input("Name", sql.NVarChar, name)
@@ -81,11 +85,14 @@ router.post("/update", async (req, res) => {
       .input("CurrentBalance", sql.Decimal(18, 2), parseFloat(currentBalance) || 0)
       .input("Balance", sql.Decimal(18, 2), parseFloat(balance) || 0)
       .input("ModifiedBy", sql.UniqueIdentifier, userId || null)
+      .input("Promocode", sql.NVarChar, promocode || null)
+      .input("Promoamount", sql.Decimal(18, 2), parseFloat(promoamount) || 0)
       .query(`
         UPDATE MemberMaster SET 
           Name = @Name, Phone = @Phone, Email = @Email, Address = @Address, IsActive = @IsActive,
           CreditLimit = @CreditLimit, CurrentBalance = @CurrentBalance, Balance = @Balance,
-          ModifiedBy = @ModifiedBy, ModifiedDate = GETDATE()
+          ModifiedBy = @ModifiedBy, ModifiedDate = GETDATE(),
+          Promocode = @Promocode, Promoamount = @Promoamount
         WHERE MemberId = @Id
       `);
     res.json({ success: true });
@@ -123,7 +130,7 @@ router.get("/search", async (req, res) => {
     const result = await pool.request()
       .input("query", sql.NVarChar, `%${query || ""}%`)
       .query(`
-        SELECT MemberId, Name, Phone, CreditLimit, CurrentBalance, IsActive 
+        SELECT MemberId, Name, Phone, CreditLimit, CurrentBalance, IsActive, Promocode, Promoamount 
         FROM MemberMaster 
         WHERE (Name LIKE @query OR Phone LIKE @query)
         ORDER BY Name
@@ -131,6 +138,43 @@ router.get("/search", async (req, res) => {
     res.json(result.recordset);
   } catch (err) {
     console.error("[MEMBERS SEARCH ERROR]", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get("/promocodes/all", async (req, res) => {
+  try {
+    const pool = await poolPromise;
+    const result = await pool.request().query(`
+      SELECT MemberId, Name, Phone, Promocode, Promoamount 
+      FROM MemberMaster 
+      WHERE Promocode IS NOT NULL AND LTRIM(RTRIM(Promocode)) <> '' AND IsActive = 1 AND Promoamount > 0
+      ORDER BY Promocode
+    `);
+    res.json(result.recordset);
+  } catch (err) {
+    console.error("[PROMOCODES ALL ERROR]", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get("/promocode/:code", async (req, res) => {
+  try {
+    const { code } = req.params;
+    const pool = await poolPromise;
+    const result = await pool.request()
+      .input("code", sql.NVarChar, code)
+      .query(`
+        SELECT MemberId, Name, Phone, Promocode, Promoamount 
+        FROM MemberMaster 
+        WHERE Promocode = @code AND IsActive = 1
+      `);
+    if (result.recordset.length === 0) {
+      return res.status(404).json({ error: "Invalid or inactive promo code" });
+    }
+    res.json(result.recordset[0]);
+  } catch (err) {
+    console.error("[PROMOCODE LOOKUP ERROR]", err);
     res.status(500).json({ error: err.message });
   }
 });

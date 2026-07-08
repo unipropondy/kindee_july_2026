@@ -115,6 +115,8 @@ export const CustomerDisplaySync = {
           const isVoided = item.status === "VOIDED" || item.StatusCode === 0 || item.statusCode === 0;
           if (isVoided) return acc;
           
+          const isCombo = item.isCombo === true || String(item.isCombo) === "1" || item.isCombo === 1;
+          const discountBasis = isCombo ? (item.basePrice ?? item.price ?? 0) : (item.price ?? 0);
           const baseTotal = (item.price || 0) * item.qty;
           let itemDiscount = 0;
           const discAmt = Number(item.discountAmount ?? item.discount ?? 0);
@@ -122,9 +124,9 @@ export const CustomerDisplaySync = {
           
           if (discAmt > 0) {
             if (discType === 'percentage') {
-              itemDiscount = baseTotal * (discAmt / 100);
+              itemDiscount = (discountBasis * (discAmt / 100)) * item.qty;
             } else {
-              itemDiscount = discAmt * item.qty;
+              itemDiscount = Math.min(discAmt, discountBasis) * item.qty;
             }
           }
 
@@ -169,6 +171,8 @@ export const CustomerDisplaySync = {
 
       // 2. Prepare clean items list for display
       const displayItems = cart.map(item => {
+        const isCombo = item.isCombo === true || String(item.isCombo) === "1" || item.isCombo === 1;
+        const discountBasis = isCombo ? (item.basePrice ?? item.price ?? 0) : (item.price ?? 0);
         const baseTotal = (item.price || 0) * item.qty;
         let itemDiscount = 0;
         const discAmt = Number(item.discountAmount ?? item.discount ?? 0);
@@ -176,9 +180,9 @@ export const CustomerDisplaySync = {
         
         if (discAmt > 0) {
           if (discType === 'percentage') {
-            itemDiscount = baseTotal * (discAmt / 100);
+            itemDiscount = (discountBasis * (discAmt / 100)) * item.qty;
           } else {
-            itemDiscount = discAmt * item.qty;
+            itemDiscount = Math.min(discAmt, discountBasis) * item.qty;
           }
         }
         const isVoided = item.status === "VOIDED" || item.StatusCode === 0 || item.statusCode === 0;

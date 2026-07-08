@@ -116,9 +116,11 @@ router.get("/dishes/all", async (req, res) => {
         ISNULL(d.IsOpenItem, 0) AS IsOpenItem,
         ISNULL(d.isServiceCharge, 1) AS isServiceCharge,
         ISNULL(d.IsCombo, 0) AS IsCombo,
+        CAST(ISNULL(d.IsDiscountAllowed, 1) AS INT) AS IsDiscountAllowed,
         ISNULL(ckt.KitchenTypeCode, '2') as KitchenTypeCode,
         ISNULL(ISNULL(ckt.KitchenTypeName, cat.CategoryName), 'KITCHEN') as KitchenTypeName,
-        pm.PrinterPath AS PrinterIP
+        pm.PrinterPath AS PrinterIP,
+        ISNULL(d.SordCode, 0) AS SordCode
       FROM DishMaster d
       LEFT JOIN DishGroupMaster dgm ON d.DishGroupId = dgm.DishGroupId
       LEFT JOIN CategoryMaster cat ON dgm.CategoryId = cat.CategoryId
@@ -127,7 +129,7 @@ router.get("/dishes/all", async (req, res) => {
         SELECT *, ROW_NUMBER() OVER(PARTITION BY KitchenTypeValue ORDER BY PrinterId) as rn 
         FROM PrintMaster WHERE IsActive = 1 AND PrinterType = 2
       ) pm ON CAST(ckt.KitchenTypeCode AS INT) = pm.KitchenTypeValue AND pm.rn = 1
-      WHERE d.IsActive = 1 ORDER BY d.Name ASC
+      WHERE d.IsActive = 1 ORDER BY ISNULL(d.SordCode, 0) ASC, d.Name ASC
     `);
     setCache(cacheKey, result.recordset);
     res.json(result.recordset);
@@ -159,9 +161,11 @@ router.get("/dishes/group/:DishGroupId", async (req, res) => {
               ISNULL(d.isServiceCharge, 1) AS isServiceCharge,
               ISNULL(d.IsOpenItem, 0) AS IsOpenItem,
               ISNULL(d.IsCombo, 0) AS IsCombo,
+              CAST(ISNULL(d.IsDiscountAllowed, 1) AS INT) AS IsDiscountAllowed,
               ISNULL(ckt.KitchenTypeCode, '2') AS KitchenTypeCode,
               ISNULL(ISNULL(ckt.KitchenTypeName, cat.CategoryName), 'KITCHEN') AS KitchenTypeName,
-              pm.PrinterPath AS PrinterIP
+              pm.PrinterPath AS PrinterIP,
+              ISNULL(d.SordCode, 0) AS SordCode
           FROM DishMaster d
  
           LEFT JOIN DishGroupMaster dgm
@@ -195,7 +199,7 @@ router.get("/dishes/group/:DishGroupId", async (req, res) => {
                 OR dmap.DishGroupId = @DishGroupId
               )
  
-          ORDER BY d.Name ASC
+          ORDER BY ISNULL(d.SordCode, 0) ASC, d.Name ASC
       `);
     setCache(cacheKey, result.recordset);
     res.json(result.recordset);
@@ -203,6 +207,23 @@ router.get("/dishes/group/:DishGroupId", async (req, res) => {
     res.status(500).send(err.message);
   }
 });
+
+router.get("/dishes/:DishId/validate-discount", async (req, res) => {
+  try {
+    const pool = await poolPromise;
+    const result = await pool.request()
+      .input("DishId", sql.VarChar(50), req.params.DishId)
+      .query("SELECT IsDiscountAllowed FROM DishMaster WHERE DishId = @DishId");
+    if (result.recordset.length === 0) {
+      return res.status(404).json({ error: "Dish not found" });
+    }
+    const isAllowed = result.recordset[0].IsDiscountAllowed === true || parseInt(result.recordset[0].IsDiscountAllowed) === 1;
+    res.json({ isDiscountAllowed: isAllowed ? 1 : 0 });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 
 /* ================= IMAGES ================= */
 class LRUImageCache {

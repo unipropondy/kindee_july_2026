@@ -121,8 +121,11 @@ export default function DiscountModal({
   }, [inputValue, discountType, currentTotal, visible]);
 
   const handleApply = () => {
-    const value = parseFloat(inputValue);
+    let value = parseFloat(inputValue);
     if (!value || isNaN(value) || value <= 0) return;
+    if (discountType === "percentage" && value > 100) {
+      value = 100;
+    }
     const discountData = { applied: true, type: discountType, value: value };
     applyDiscount(discountData);
     const currentContext = getOrderContext();
@@ -143,6 +146,12 @@ export default function DiscountModal({
     let cleaned = text.replace(/[^0-9.]/g, '');
     const parts = cleaned.split('.');
     if (parts.length > 2) cleaned = parts[0] + '.' + parts.slice(1).join('');
+    if (discountType === "percentage") {
+      const num = parseFloat(cleaned);
+      if (!isNaN(num) && num > 100) {
+        cleaned = "100";
+      }
+    }
     setInputValue(cleaned);
   };
 

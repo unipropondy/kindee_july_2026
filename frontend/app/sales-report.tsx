@@ -169,6 +169,7 @@ export default function SalesReport() {
   const [summary, setSummary] = useState<any>(null);
   const todayDate = getSingaporeDateString();
   const [selectedDate, setSelectedDate] = useState(todayDate);
+  const [activeBusinessDate, setActiveBusinessDate] = useState<string | null>(null);
   const [selectedFilter, setSelectedFilter] = useState<FilterType>("DAILY");
   const [, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -236,6 +237,12 @@ export default function SalesReport() {
         const savedTypes = await AsyncStorage.getItem("sales_order_types");
         const savedSort = await AsyncStorage.getItem("sales_sort_order");
         const savedDownloadFilter = await AsyncStorage.getItem("sales_download_filter");
+        const savedBusinessDate = await AsyncStorage.getItem("selected_business_date");
+
+        if (savedBusinessDate) {
+          setSelectedDate(savedBusinessDate);
+          setActiveBusinessDate(savedBusinessDate);
+        }
 
         if (
           savedFilter &&
@@ -252,13 +259,33 @@ export default function SalesReport() {
         if (savedModes) setActivePaymentModes(JSON.parse(savedModes));
         if (savedTypes) setActiveOrderTypes(JSON.parse(savedTypes));
         if (savedSort) setSortOrder(savedSort as "NEWEST" | "HIGHEST");
-      } catch (e) {
 
+        try {
+          const res = await fetch(`${API_URL}/api/settlement/active-day`);
+          const data = await res.json();
+          if (data.success && data.active && data.startDate) {
+            setSelectedDate(data.startDate);
+            setActiveBusinessDate(data.startDate);
+            await AsyncStorage.setItem("selected_business_date", data.startDate);
+          } else {
+            setActiveBusinessDate(null);
+            await AsyncStorage.removeItem("selected_business_date");
+          }
+        } catch (err) {
+          console.error("Failed to fetch active business day:", err);
+        }
+      } catch (e) {
         console.error("Load state error:", e);
       }
     };
     loadState();
   }, []);
+
+  useEffect(() => {
+    if (activeBusinessDate && selectedDate !== activeBusinessDate) {
+      setSelectedDate(activeBusinessDate);
+    }
+  }, [activeBusinessDate, selectedDate]);
 
   useEffect(() => {
     const saveState = async () => {
@@ -323,6 +350,23 @@ export default function SalesReport() {
   const fetchData = async () => {
     try {
       if (sales.length === 0) setLoading(true);
+
+      try {
+        const res = await fetch(`${API_URL}/api/settlement/active-day`);
+        const data = await res.json();
+        if (data.success && data.active && data.startDate) {
+          setActiveBusinessDate(data.startDate);
+          if (selectedDate === todayDate && selectedDate !== data.startDate) {
+            setSelectedDate(data.startDate);
+            return;
+          }
+        } else {
+          setActiveBusinessDate(null);
+        }
+      } catch (err) {
+        console.error("Failed to fetch active business day in fetchData:", err);
+      }
+
       await Promise.all([fetchSales(), fetchSummary(), fetchPaymentMethods()]);
     } catch (error) {
       console.error("Error:", error);
@@ -898,8 +942,9 @@ export default function SalesReport() {
 
     if (selectedFilter === "DAILY") {
       result = sales.filter((s) => {
-        if (!s.SettlementDate) return false;
-        const itemDate = getSingaporeDateString(parseDatabaseDate(s.SettlementDate));
+        const dateToUse = s.BusinessDate || s.SettlementDate;
+        if (!dateToUse) return false;
+        const itemDate = getSingaporeDateString(parseDatabaseDate(dateToUse));
         return itemDate === selectedDate;
       });
     } else if (selectedFilter === "WEEKLY") {
@@ -917,8 +962,9 @@ export default function SalesReport() {
       const endStr = selectedDate;
 
       result = sales.filter((s) => {
-        if (!s.SettlementDate) return false;
-        const saleDateStr = getSingaporeDateString(parseDatabaseDate(s.SettlementDate));
+        const dateToUse = s.BusinessDate || s.SettlementDate;
+        if (!dateToUse) return false;
+        const saleDateStr = getSingaporeDateString(parseDatabaseDate(dateToUse));
         return saleDateStr >= startStr && saleDateStr <= endStr;
       });
     } else if (selectedFilter === "MONTHLY") {
@@ -931,8 +977,9 @@ export default function SalesReport() {
       const endStr = `${parts[0]}-${parts[1]}-${String(lastDay).padStart(2, "0")}`;
 
       result = sales.filter((s) => {
-        if (!s.SettlementDate) return false;
-        const saleDateStr = getSingaporeDateString(parseDatabaseDate(s.SettlementDate));
+        const dateToUse = s.BusinessDate || s.SettlementDate;
+        if (!dateToUse) return false;
+        const saleDateStr = getSingaporeDateString(parseDatabaseDate(dateToUse));
         return saleDateStr >= startStr && saleDateStr <= endStr;
       });
     } else if (selectedFilter === "YEARLY") {
@@ -944,14 +991,16 @@ export default function SalesReport() {
       const endStr = selectedDate;
 
       result = sales.filter((s) => {
-        if (!s.SettlementDate) return false;
-        const saleDateStr = getSingaporeDateString(parseDatabaseDate(s.SettlementDate));
+        const dateToUse = s.BusinessDate || s.SettlementDate;
+        if (!dateToUse) return false;
+        const saleDateStr = getSingaporeDateString(parseDatabaseDate(dateToUse));
         return saleDateStr >= startStr && saleDateStr <= endStr;
       });
     } else if (selectedFilter === "CUSTOM" && rangeStart && rangeEnd) {
       result = sales.filter((s) => {
-        if (!s.SettlementDate) return false;
-        const saleDateStr = getSingaporeDateString(parseDatabaseDate(s.SettlementDate));
+        const dateToUse = s.BusinessDate || s.SettlementDate;
+        if (!dateToUse) return false;
+        const saleDateStr = getSingaporeDateString(parseDatabaseDate(dateToUse));
         return saleDateStr >= rangeStart && saleDateStr <= rangeEnd;
       });
     }
@@ -1363,7 +1412,24 @@ export default function SalesReport() {
       if (itemsRes.ok) {
         const data = await itemsRes.json();
         if (Array.isArray(data) && data.length > 0) {
-          setOrderDetails(data);
+          const parsedData = data.map((item: any) => {
+            let comboSelections = undefined;
+            const comboJson = item.ComboDetailsJSON || item.comboDetailsJSON;
+            if (comboJson) {
+              try {
+                const parsed = typeof comboJson === "string" ? JSON.parse(comboJson) : comboJson;
+                comboSelections = Array.isArray(parsed) ? parsed : parsed?.groups;
+              } catch (e) {
+                console.error("Error parsing ComboDetailsJSON:", e);
+              }
+            }
+            return {
+              ...item,
+              comboSelections,
+              isCombo: !!comboSelections && comboSelections.length > 0,
+            };
+          });
+          setOrderDetails(parsedData);
         } else {
           setOrderDetails([
             {
@@ -3084,6 +3150,27 @@ export default function SalesReport() {
                                   })}
                               </View>
                             )}
+                          {item.isCombo && item.comboSelections && Array.isArray(item.comboSelections) && (
+                            <View style={{ marginTop: 6, gap: 4, paddingLeft: 4 }}>
+                              {item.comboSelections
+                                .filter((group: any) => group.items && group.items.length > 0)
+                                .map((group: any, gIdx: number) => (
+                                  <View key={`g-${gIdx}`} style={{ marginTop: 2 }}>
+                                    <Text style={{ fontSize: 11, fontFamily: Fonts.bold, color: Theme.primary }}>
+                                      {group.groupName}:
+                                    </Text>
+                                    {(group.items || []).map((opt: any, oIdx: number) => {
+                                      const effectiveAdd = (parseFloat(opt.surcharge || 0) + parseFloat(opt.dishPrice || 0));
+                                      return (
+                                        <Text key={`o-${oIdx}`} style={{ fontSize: 11, color: Theme.textSecondary || "#666", paddingLeft: 8, marginTop: 1 }}>
+                                          ↳ {opt.name}{effectiveAdd > 0 ? ` (+$${effectiveAdd.toFixed(2)})` : ""}
+                                        </Text>
+                                      );
+                                    })}
+                                  </View>
+                                ))}
+                            </View>
+                          )}
                           {/* Unit price row — strikethrough if item has discount */}
                           {item.DiscountAmount > 0 ? (
                             <View style={{ flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
@@ -3904,13 +3991,13 @@ export default function SalesReport() {
                   />
                   <TouchableOpacity
                     onPress={() => {
-                      const today = new Date().toISOString().split("T")[0];
+                      const defaultDate = activeBusinessDate || new Date().toISOString().split("T")[0];
                       if (pickerMode === "SINGLE") {
-                        setSelectedDate(today);
+                        setSelectedDate(defaultDate);
                       } else if (pickerMode === "START") {
-                        setRangeStart(today);
+                        setRangeStart(defaultDate);
                       } else {
-                        setRangeEnd(today);
+                        setRangeEnd(defaultDate);
                       }
                       setShowDatePicker(false);
                     }}

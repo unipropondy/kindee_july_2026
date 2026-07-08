@@ -607,38 +607,7 @@ export default function AIChatScreen() {
                   <Text style={styles.filterBtnText}>{opt}</Text>
                 </TouchableOpacity>
               ))}
-              <TouchableOpacity
-                style={[styles.filterBtn, styles.customRangeBtn]}
-                onPress={() => setShowCustomInputs(!showCustomInputs)}
-              >
-                <Text style={styles.customRangeBtnText}>Custom Range</Text>
-              </TouchableOpacity>
             </View>
-
-            {showCustomInputs && (
-              <View style={styles.customDateContainer}>
-                <TextInput
-                  style={styles.dateInput}
-                  placeholder="Start Date (YYYY-MM-DD)"
-                  placeholderTextColor={Theme.textSecondary}
-                  value={startDateInput}
-                  onChangeText={setStartDateInput}
-                />
-                <TextInput
-                  style={styles.dateInput}
-                  placeholder="End Date (YYYY-MM-DD)"
-                  placeholderTextColor={Theme.textSecondary}
-                  value={endDateInput}
-                  onChangeText={setEndDateInput}
-                />
-                <TouchableOpacity
-                  style={styles.confirmBtn}
-                  onPress={handleCustomConfirm}
-                >
-                  <Text style={styles.confirmBtnText}>Apply Custom Range</Text>
-                </TouchableOpacity>
-              </View>
-            )}
 
             <TouchableOpacity
               style={styles.closeModalBtn}

@@ -221,6 +221,13 @@ if (!gatewayResponse.success) {
     // 4️⃣ If BILL, write to legacy tables
     // ============================================================
     if (referenceType === 'BILL') {
+      // Fetch active business start_date
+      let startDate = null;
+      const activeDayRes = await transaction.request().query("SELECT TOP 1 StartDate FROM DateEntry ORDER BY CreatedDate DESC");
+      if (activeDayRes.recordset.length > 0) {
+        startDate = activeDayRes.recordset[0].StartDate;
+      }
+
       const legacyReq = new sql.Request(transaction);
 
       await legacyReq
@@ -234,29 +241,30 @@ if (!gatewayResponse.success) {
         .input("Remarks", sql.VarChar(500), payModeName + (gatewayResponse ? ' (Gateway)' : ''))
         .input("BusinessUnitId", sql.UniqueIdentifier, businessUnitId)
         .input("CreatedBy", sql.UniqueIdentifier, cashierId)
+        .input("startDate", sql.Date, startDate)
         .query(`
           DECLARE @PayId UNIQUEIDENTIFIER = NEWID();
 
           INSERT INTO [dbo].[PaymentDetailCur] (
             PaymentId, RestaurantBillId, BilledFor, PaymentCollectedOn,
             PaymentType, Paymode, Amount, ReferenceNumber, Remarks,
-            BusinessUnitId, CreatedBy, CreatedOn, ModifiedBy, ModifiedOn
+            BusinessUnitId, CreatedBy, CreatedOn, ModifiedBy, ModifiedOn, start_date
           ) VALUES (
             @PayId, @RestaurantBillId, @BilledFor, GETDATE(),
             @PaymentType, @Paymode, @Amount, @ReferenceNo, @Remarks,
-            @BusinessUnitId, @CreatedBy, GETDATE(), @CreatedBy, GETDATE()
+            @BusinessUnitId, @CreatedBy, GETDATE(), @CreatedBy, GETDATE(), @startDate
           );
 
           INSERT INTO [dbo].[PaymentDetail] (
             PaymentId, RestaurantBillId, SettlementId, InvoiceId, OrderId,
             BilledFor, PaymentCollectedOn, PaymentType, Paymode, Amount,
             ReferenceNumber, Remarks, BusinessUnitId,
-            CreatedBy, CreatedOn, ModifiedBy, ModifiedOn, isSettlement
+            CreatedBy, CreatedOn, ModifiedBy, ModifiedOn, isSettlement, start_date
           ) VALUES (
             @PayId, @RestaurantBillId, @RestaurantBillId, @RestaurantBillId, @PaymentOrderId,
             @BilledFor, GETDATE(), @PaymentType, @Paymode, @Amount,
             @ReferenceNo, @Remarks, @BusinessUnitId,
-            @CreatedBy, GETDATE(), @CreatedBy, GETDATE(), 1
+            @CreatedBy, GETDATE(), @CreatedBy, GETDATE(), 1, @startDate
           );
         `);
 

@@ -38,9 +38,25 @@ const normalizeIp = (ip) => {
 };
 
 // GET /api/print-jobs/bridge-status - Check if print bridge is active/online
-router.get('/bridge-status', (req, res) => {
-  const isOnline = (Date.now() - lastBridgeActivity) < 8000; // 8 seconds threshold
-  res.json({ success: true, online: isOnline });
+router.get('/bridge-status', async (req, res) => {
+  try {
+    const pool = getPool();
+    const result = await pool.request().query(`
+      SELECT DATEDIFF(SECOND, LastBridgeHeartbeat, GETDATE()) AS SecondsSinceHeartbeat 
+      FROM CompanySettings 
+      WHERE Id = '1'
+    `);
+    if (result.recordset.length > 0 && result.recordset[0].SecondsSinceHeartbeat !== null) {
+      const isOnline = result.recordset[0].SecondsSinceHeartbeat < 8; // 8 seconds threshold
+      return res.json({ success: true, online: isOnline });
+    }
+    const isOnline = (Date.now() - lastBridgeActivity) < 8000;
+    res.json({ success: true, online: isOnline });
+  } catch (err) {
+    console.error('Error checking print bridge status:', err);
+    const isOnline = (Date.now() - lastBridgeActivity) < 8000;
+    res.json({ success: true, online: isOnline });
+  }
 });
 
 // 2. GET /api/print-jobs/pending - Fetch pending jobs for the store
@@ -48,6 +64,14 @@ router.get('/pending', authenticateBridge, async (req, res) => {
   lastBridgeActivity = Date.now();
   lastBridgeIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
   const pool = getPool();
+
+  // Persist heartbeat in DB to support multi-instance servers/restarts
+  try {
+    await pool.request().query("UPDATE CompanySettings SET LastBridgeHeartbeat = GETDATE() WHERE Id = '1'");
+  } catch (dbErr) {
+    console.error('Failed to save bridge heartbeat in database:', dbErr.message);
+  }
+
   const transaction = new sql.Transaction(pool);
 
   try {
@@ -154,7 +178,7 @@ router.post('/', authenticateBridge, async (req, res) => {
         .query(`
           SELECT TOP 1 PrinterIP, PrinterName 
           FROM PrintMaster 
-          WHERE PrinterType = 2 AND CAST(KitchenTypeValue AS VARCHAR(50)) = CAST(@KitchenTypeValue AS VARCHAR(50)) AND IsActive = 1
+          WHERE PrinterType = 2 AND CAST(KitchenTypeValue AS VARCHAR(50)) = CAST(@KitchenTypeValue AS VARCHAR(50)) AND IsActive = 1 AND PrinterIP IS NOT NULL AND PrinterIP <> ''
         `);
       if (kitchenRes.recordset.length > 0) {
         printerIp = kitchenRes.recordset[0].PrinterIP;
@@ -162,14 +186,14 @@ router.post('/', authenticateBridge, async (req, res) => {
       }
     }
 
-    // Fallback or Direct check for Cashier (1) or TakeAway (3) or if Kitchen Printer not found
-    if (!printerIp) {
+    // Fallback or Direct check for Cashier (1) or TakeAway (3) or if Kitchen Printer not found/not configured with IP
+    if (!printerIp || printerIp.trim() === '') {
       const printerRes = await pool.request()
         .input('PrinterType', sql.Int, pType)
         .query(`
           SELECT TOP 1 PrinterIP, PrinterName 
           FROM PrintMaster 
-          WHERE PrinterType = @PrinterType AND IsActive = 1
+          WHERE PrinterType = @PrinterType AND IsActive = 1 AND PrinterIP IS NOT NULL AND PrinterIP <> ''
         `);
       if (printerRes.recordset.length > 0) {
         printerIp = printerRes.recordset[0].PrinterIP;
@@ -178,12 +202,12 @@ router.post('/', authenticateBridge, async (req, res) => {
     }
 
     // Ultimate fallback to Cashier Printer (Type 1)
-    if (!printerIp) {
+    if (!printerIp || printerIp.trim() === '') {
       const cashierRes = await pool.request()
         .query(`
           SELECT TOP 1 PrinterIP, PrinterName 
           FROM PrintMaster 
-          WHERE PrinterType = 1 AND IsActive = 1
+          WHERE PrinterType = 1 AND IsActive = 1 AND PrinterIP IS NOT NULL AND PrinterIP <> ''
         `);
       if (cashierRes.recordset.length > 0) {
         printerIp = cashierRes.recordset[0].PrinterIP;

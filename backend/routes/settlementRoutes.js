@@ -3,6 +3,66 @@ const router = express.Router();
 const { getPool, sql } = require('../config/db');
 const { authenticateToken } = require('../middleware/auth');
 
+
+// ============================================
+// 📊 DAY START / DAY END BUSINESS WORKFLOW
+// ============================================
+router.post("/day-start", async (req, res) => {
+  try {
+    const { startDate, username } = req.body;
+    if (!startDate) {
+      return res.status(400).json({ error: "StartDate is required" });
+    }
+    const pool = getPool();
+    
+    // Clear previous active records
+    await pool.request().query("DELETE FROM DateEntry");
+    
+    // Insert new business day record
+    await pool.request()
+      .input("username", sql.VarChar(30), username || "admin")
+      .input("startDate", sql.Date, startDate)
+      .input("createdBy", sql.VarChar(30), username || "admin")
+      .query(`
+        INSERT INTO DateEntry (username, StartDate, CreatedBy, CreatedDate)
+        VALUES (@username, @startDate, @createdBy, GETDATE())
+      `);
+      
+    res.json({ success: true, message: "Day started successfully" });
+  } catch (err) {
+    console.error("Day Start Error:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post("/day-end", async (req, res) => {
+  try {
+    const pool = getPool();
+    await pool.request().query("DELETE FROM DateEntry");
+    res.json({ success: true, message: "Day ended successfully" });
+  } catch (err) {
+    console.error("Day End Error:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get("/active-day", async (req, res) => {
+  try {
+    const pool = getPool();
+    const result = await pool.request().query("SELECT TOP 1 StartDate FROM DateEntry ORDER BY CreatedDate DESC");
+    if (result.recordset.length > 0) {
+      const activeDate = result.recordset[0].StartDate;
+      const formattedDate = activeDate instanceof Date ? activeDate.toISOString().split("T")[0] : activeDate;
+      res.json({ success: true, active: true, startDate: formattedDate });
+    } else {
+      res.json({ success: true, active: false, startDate: null });
+    }
+  } catch (err) {
+    console.error("Active Day Fetch Error:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ============================================
 // 1️⃣ CHECK IF DAY IS SETTLED
 // ============================================
@@ -337,6 +397,14 @@ router.post('/save-denominations', authenticateToken, async (req, res) => {
     await transaction.begin();
 
     try {
+      // Day Start / Day End validation check
+      const activeDayRes = await transaction.request().query("SELECT TOP 1 StartDate FROM DateEntry ORDER BY CreatedDate DESC");
+      if (activeDayRes.recordset.length === 0) {
+        throw new Error("No active business date. Please Start Day first.");
+      }
+      const activeStartDate = activeDayRes.recordset[0].StartDate;
+      const formattedStartDate = activeStartDate instanceof Date ? activeStartDate.toISOString().split("T")[0] : activeStartDate;
+
       const request = new sql.Request(transaction);
       const createdBy = req.user?.userName || req.user?.username || 'Admin';
 
@@ -362,11 +430,12 @@ router.post('/save-denominations', authenticateToken, async (req, res) => {
           insertReq.input('createdBy', sql.VarChar, createdBy);
           insertReq.input('targetDate', sql.Date, targetDate);
           insertReq.input('screenType', sql.VarChar, targetScreenType);
+          insertReq.input('startDate', sql.Date, formattedStartDate);
 
           const dateValue = date ? '@targetDate' : 'GETDATE()';
           await insertReq.query(`
-            INSERT INTO OpeningCashDenomination (CurrencyValue, NoteCount, Type, CreatedBy, CreatedOn, ScreenType)
-            VALUES (@value, @count, @recordType, @createdBy, ${dateValue}, @screenType)
+            INSERT INTO OpeningCashDenomination (CurrencyValue, NoteCount, Type, CreatedBy, CreatedOn, ScreenType, start_date)
+            VALUES (@value, @count, @recordType, @createdBy, ${dateValue}, @screenType, @startDate)
           `);
         }
       }
@@ -725,17 +794,15 @@ router.post('/artist-cashbox', authenticateToken, async (req, res) => {
     await transaction.begin();
 
     try {
-      console.log('[CASHBOX] STEP 1: Inserting ArtistCashBox...');
-      // 1. Insert into ArtistCashBox
-      const result = await transaction.request()
-        .input('ArtistName', sql.VarChar, ArtistName)
-        .input('Amount', sql.Decimal(18, 2), Amount)
-        .query(`
-          INSERT INTO ArtistCashBox
-          (ArtistName, Amount, SettlementDate, CreatedDate)
-          OUTPUT inserted.*
-          VALUES (@ArtistName, @Amount, GETDATE(), GETDATE())
-        `);
+      // Day Start / Day End validation check
+      const activeDayRes = await transaction.request().query("SELECT TOP 1 StartDate FROM DateEntry ORDER BY CreatedDate DESC");
+      if (activeDayRes.recordset.length === 0) {
+        throw new Error("No active business date. Please Start Day first.");
+      }
+      const activeStartDate = activeDayRes.recordset[0].StartDate;
+      const formattedStartDate = activeStartDate instanceof Date ? activeStartDate.toISOString().split("T")[0] : activeStartDate;
+
+      console.log('[CASHBOX] STEP 1: Skip ArtistCashBox table insert...');
       console.log('[CASHBOX] STEP 1 OK');
 
       console.log('[CASHBOX] STEP 2: Looking up DishMaster...');
@@ -776,15 +843,16 @@ router.post('/artist-cashbox', authenticateToken, async (req, res) => {
         .input('Amount', sql.Decimal(18, 2), Amount)
         .input('BillNo', sql.VarChar(50), billNo)
         .input('UserId', sql.UniqueIdentifier, userId)
+        .input('startDate', sql.Date, formattedStartDate)
         .query(`
           INSERT INTO SettlementHeader (
             SettlementID, LastSettlementDate, LastDayEndDate, SubTotal, TotalTax, DiscountAmount, 
             DiscountType, BillNo, OrderType, TableNo, Section, SysAmount, ManualAmount, 
-            CreatedBy, CreatedOn, VoidItemQty, VoidItemAmount, RoundedBy, ServiceCharge, IsCancelled
+            CreatedBy, CreatedOn, VoidItemQty, VoidItemAmount, RoundedBy, ServiceCharge, IsCancelled, start_date
           ) VALUES (
             @SettlementID, GETDATE(), GETDATE(), @Amount, 0, 0, 
             'AMOUNT', @BillNo, 'CASHBOX', 'CASHBOX', 'CASHBOX', @Amount, @Amount, 
-            @UserId, GETDATE(), 0, 0, 0, 0, 0
+            @UserId, GETDATE(), 0, 0, 0, 0, 0, @startDate
           )
         `);
       console.log('[CASHBOX] STEP 3 OK');
@@ -803,15 +871,16 @@ router.post('/artist-cashbox', authenticateToken, async (req, res) => {
         .input('Qty', sql.Int, qty)
         .input('Price', sql.Decimal(18, 2), price)
         .input('Status', sql.NVarChar(50), 'NORMAL')
+        .input('startDate', sql.Date, formattedStartDate)
         .query(`
           INSERT INTO SettlementItemDetail (
             SettlementID, DishId, DishGroupId, CategoryId, SubCategoryId,
             DishName, CategoryName, SubCategoryName,
-            Qty, Price, OrderDateTime, Status
+            Qty, Price, OrderDateTime, Status, start_date
           ) VALUES (
             @SettlementID, @DishId, @DishGroupId, @CategoryId, @SubCategoryId,
             @DishName, @CategoryName, @SubCategoryName,
-            @Qty, @Price, GETDATE(), @Status
+            @Qty, @Price, GETDATE(), @Status, @startDate
           )
         `);
       console.log('[CASHBOX] STEP 4 OK');
@@ -849,21 +918,22 @@ router.post('/artist-cashbox', authenticateToken, async (req, res) => {
         .input('Amount', sql.Decimal(18, 2), Amount)
         .input('UserId', sql.UniqueIdentifier, userId)
         .input('BizId', sql.UniqueIdentifier, bizId)
+        .input('startDate', sql.Date, formattedStartDate)
         .query(`
           INSERT INTO PaymentDetailCur (
             PaymentId, RestaurantBillId, BilledFor, PaymentCollectedOn, 
-            PaymentType, Paymode, Amount, Remarks, BusinessUnitId, CreatedBy, CreatedOn, ModifiedBy, ModifiedOn
+            PaymentType, Paymode, Amount, Remarks, BusinessUnitId, CreatedBy, CreatedOn, ModifiedBy, ModifiedOn, start_date
           ) VALUES (
             @PaymentId, @SettlementID, 1, GETDATE(), 
-            1, 1, @Amount, 'Cash Box Entry', @BizId, @UserId, GETDATE(), @UserId, GETDATE()
+            1, 1, @Amount, 'Cash Box Entry', @BizId, @UserId, GETDATE(), @UserId, GETDATE(), @startDate
           );
 
           INSERT INTO PaymentDetail (
             PaymentId, RestaurantBillId, SettlementId, InvoiceId, BilledFor, PaymentCollectedOn, 
-            PaymentType, Paymode, Amount, Remarks, BusinessUnitId, CreatedBy, CreatedOn, ModifiedBy, ModifiedOn, isSettlement
+            PaymentType, Paymode, Amount, Remarks, BusinessUnitId, CreatedBy, CreatedOn, ModifiedBy, ModifiedOn, isSettlement, start_date
           ) VALUES (
             @PaymentId, @SettlementID, @SettlementID, @SettlementID, 1, GETDATE(), 
-            1, 1, @Amount, 'Cash Box Entry', @BizId, @UserId, GETDATE(), @UserId, GETDATE(), 1
+            1, 1, @Amount, 'Cash Box Entry', @BizId, @UserId, GETDATE(), @UserId, GETDATE(), 1, @startDate
           );
         `);
       console.log('[CASHBOX] STEP 7 OK');
@@ -873,7 +943,7 @@ router.post('/artist-cashbox', authenticateToken, async (req, res) => {
 
       res.json({
         success: true,
-        data: result.recordset[0]
+        settlementId
       });
 
     } catch (innerErr) {

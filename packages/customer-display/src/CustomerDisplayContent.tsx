@@ -33,7 +33,7 @@ import {
   View,
 } from "react-native";
 import QRCode from "react-native-qrcode-svg";
-import { API_URL } from "./constants/Config";
+import { API_URL, setApiUrl } from "./constants/Config";
 import { Fonts } from "./constants/Fonts";
 import { socket } from "./constants/socket";
 import { Theme } from "./constants/theme";
@@ -121,12 +121,75 @@ export default function CustomerDisplayContent() {
 
   // 1. Initialize settings, socket listener & terminal room join
   useEffect(() => {
-    usePaymentSettingsStore.getState().fetchSettings();
-    useCompanySettingsStore.getState().fetchSettings("1");
+    // Inject custom fonts and vector icon font-faces on Web/Electron
+    if (Platform.OS === 'web' && typeof document !== 'undefined') {
+      const styleId = 'customer-display-fonts-and-icons';
+      if (!document.getElementById(styleId)) {
+        const style = document.createElement('style');
+        style.id = styleId;
+        style.type = 'text/css';
+        style.appendChild(document.createTextNode(`
+          @font-face {
+            font-family: 'Ionicons';
+            src: url('https://unpkg.com/react-native-vector-icons@10.0.0/Fonts/Ionicons.ttf') format('truetype');
+          }
+
+          @font-face {
+            font-family: 'Inter_400Regular';
+            src: url('https://unpkg.com/@fontsource/inter@5.0.1/files/inter-latin-400-normal.woff2') format('woff2');
+          }
+          @font-face {
+            font-family: 'Inter_500Medium';
+            src: url('https://unpkg.com/@fontsource/inter@5.0.1/files/inter-latin-500-normal.woff2') format('woff2');
+          }
+          @font-face {
+            font-family: 'Inter_600SemiBold';
+            src: url('https://unpkg.com/@fontsource/inter@5.0.1/files/inter-latin-600-normal.woff2') format('woff2');
+          }
+          @font-face {
+            font-family: 'Inter_700Bold';
+            src: url('https://unpkg.com/@fontsource/inter@5.0.1/files/inter-latin-700-normal.woff2') format('woff2');
+          }
+          @font-face {
+            font-family: 'Inter_800ExtraBold';
+            src: url('https://unpkg.com/@fontsource/inter@5.0.1/files/inter-latin-800-normal.woff2') format('woff2');
+          }
+          @font-face {
+            font-family: 'Inter_900Black';
+            src: url('https://unpkg.com/@fontsource/inter@5.0.1/files/inter-latin-900-normal.woff2') format('woff2');
+          }
+        `));
+        document.head.appendChild(style);
+      }
+    }
+
+    const initSettings = () => {
+      usePaymentSettingsStore.getState().fetchSettings();
+      useCompanySettingsStore.getState().fetchSettings("1");
+    };
+
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      fetch('/api/config')
+        .then((r) => r.json())
+        .then((data) => {
+          const activeBackend = data?.backends?.find((b: any) => b.enabled);
+          if (activeBackend && activeBackend.url) {
+            console.log(`🖥️ [CustomerDisplay] Dynamically setting API_URL from print bridge config: ${activeBackend.url}`);
+            setApiUrl(activeBackend.url);
+          }
+          initSettings();
+        })
+        .catch((err) => {
+          console.warn('🖥️ [CustomerDisplay] Failed to fetch print bridge config, using default API_URL', err);
+          initSettings();
+        });
+    } else {
+      initSettings();
+    }
 
     const handleSync = (data: any) => {
       console.log(
-        "ðŸ–¥ï¸ [CustomerDisplay] Received sync event:",
+        "🖥️ [CustomerDisplay] Received sync event:",
         data.paymentSuccess ? "SUCCESS" : data.active ? "CART" : "IDLE",
       );
       setDisplayState(data);

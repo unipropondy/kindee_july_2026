@@ -82,21 +82,13 @@ export function checkPrinterReachable(ip: string, port: number = 9100, timeoutMs
  * Supports both base64 binary encoding and standard UTF-8 string encoding with tag translation.
  */
 export async function sendToPrinter(ip: string, port: number, content: string, jobId: string | number): Promise<void> {
-  const checkStart = Date.now();
-  const isReachable = await checkPrinterReachable(ip, port, 750);
-  const latency = Date.now() - checkStart;
-
-  if (!isReachable) {
-    console.log(`\n[Printer Check]\nIP: ${ip}\nPort: ${port}\nReachable: NO\nReason: Timeout\n\n[Print]\nStatus: FAILED\nError: Printer unreachable\n`);
-    throw new Error('Printer unreachable');
-  }
-
-  console.log(`\n[Printer Check]\nIP: ${ip}\nPort: ${port}\nReachable: YES\nLatency: ${latency}ms\n`);
+  const targetPort = port || 9100;
 
   return new Promise((resolve, reject) => {
     const startTime = Date.now();
     const client = new net.Socket();
     const timeoutVal = 30000;
+    const connectTimeoutMs = 3000; // 3 seconds connection timeout limit
 
     client.setTimeout(timeoutVal);
 
@@ -114,28 +106,51 @@ export async function sendToPrinter(ip: string, port: number, content: string, j
 
     console.log(`\n[Print]\nStarted...\n`);
 
-    client.connect(port, ip, () => {
+    let resolved = false;
+    const connectTimer = setTimeout(() => {
+      if (!resolved) {
+        resolved = true;
+        client.destroy();
+        console.log(`Status: FAILED\nError: Connection to printer timed out\n`);
+        reject(new Error('Connection to printer timed out'));
+      }
+    }, connectTimeoutMs);
+
+    client.connect(targetPort, ip, () => {
+      clearTimeout(connectTimer);
       client.write(payload, () => {
         client.end();
       });
     });
 
     client.on('close', () => {
-      const duration = Date.now() - startTime;
-      console.log(`Completed\nDuration: ${duration}ms\nStatus: COMPLETED\n`);
-      resolve();
+      clearTimeout(connectTimer);
+      if (!resolved) {
+        resolved = true;
+        const duration = Date.now() - startTime;
+        console.log(`Completed\nDuration: ${duration}ms\nStatus: COMPLETED\n`);
+        resolve();
+      }
     });
 
     client.on('error', (err: any) => {
-      client.destroy();
-      console.log(`Status: FAILED\nError: ${err.message || 'TCP Socket Connection Failed'}\n`);
-      reject(err);
+      clearTimeout(connectTimer);
+      if (!resolved) {
+        resolved = true;
+        client.destroy();
+        console.log(`Status: FAILED\nError: ${err.message || 'TCP Socket Connection Failed'}\n`);
+        reject(err);
+      }
     });
 
     client.on('timeout', () => {
-      client.destroy();
-      console.log(`Status: FAILED\nError: Connection timed out\n`);
-      reject(new Error(`Connection to printer timed out`));
+      clearTimeout(connectTimer);
+      if (!resolved) {
+        resolved = true;
+        client.destroy();
+        console.log(`Status: FAILED\nError: Connection timed out\n`);
+        reject(new Error(`Connection to printer timed out`));
+      }
     });
   });
 }

@@ -58,6 +58,8 @@ async function initDB(pool) {
     await runQuery("MemberMaster - ModifiedBy", "IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[MemberMaster]') AND name = 'ModifiedBy') ALTER TABLE [dbo].[MemberMaster] ADD ModifiedBy UNIQUEIDENTIFIER NULL");
     await runQuery("MemberMaster - ModifiedDate", "IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[MemberMaster]') AND name = 'ModifiedDate') ALTER TABLE [dbo].[MemberMaster] ADD ModifiedDate DATETIME NULL");
     await runQuery("MemberMaster - CreatedBy", "IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[MemberMaster]') AND name = 'CreatedBy') ALTER TABLE [dbo].[MemberMaster] ADD CreatedBy UNIQUEIDENTIFIER NULL");
+    await runQuery("MemberMaster - Promocode", "IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[MemberMaster]') AND name = 'Promocode') ALTER TABLE [dbo].[MemberMaster] ADD Promocode NVARCHAR(100) NULL");
+    await runQuery("MemberMaster - Promoamount", "IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[MemberMaster]') AND name = 'Promoamount') ALTER TABLE [dbo].[MemberMaster] ADD Promoamount DECIMAL(18,2) NULL");
 
     // 2.1 CreditCustomerMaster (Dedicated Credit Accounts table separate from Members)
     await runQuery("Create CreditCustomerMaster", `
@@ -237,6 +239,7 @@ async function initDB(pool) {
     await runQuery("CompanySettings - ServiceChargePercentage", "IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[CompanySettings]') AND name = 'ServiceChargePercentage') ALTER TABLE [dbo].[CompanySettings] ADD ServiceChargePercentage DECIMAL(18, 2) DEFAULT 0");
     await runQuery("CompanySettings - SVCIdentification", "IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[CompanySettings]') AND name = 'SVCIdentification') ALTER TABLE [dbo].[CompanySettings] ADD SVCIdentification BIT NOT NULL DEFAULT 1");
     await runQuery("CompanySettings - TakeawayCharges", "IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[CompanySettings]') AND name = 'TakeawayCharges') ALTER TABLE [dbo].[CompanySettings] ADD TakeawayCharges DECIMAL(18, 2) DEFAULT 0");
+    await runQuery("CompanySettings - LastBridgeHeartbeat", "IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[CompanySettings]') AND name = 'LastBridgeHeartbeat') ALTER TABLE [dbo].[CompanySettings] ADD LastBridgeHeartbeat DATETIME");
     await runQuery("AppSettings - EnableCheckoutFlow", "IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[AppSettings]') AND name = 'EnableCheckoutFlow') ALTER TABLE [dbo].[AppSettings] ADD EnableCheckoutFlow BIT NOT NULL DEFAULT 1");
     await runQuery("AppSettings - EnableDirectProcessToPay", "IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[AppSettings]') AND name = 'EnableDirectProcessToPay') ALTER TABLE [dbo].[AppSettings] ADD EnableDirectProcessToPay BIT NOT NULL DEFAULT 0");
     await runQuery("AppSettings - CustomerSideDisplay", "IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[AppSettings]') AND name = 'CustomerSideDisplay') ALTER TABLE [dbo].[AppSettings] ADD CustomerSideDisplay BIT NOT NULL DEFAULT 1");
@@ -532,6 +535,22 @@ async function initDB(pool) {
 
     // 19. dishOrderItemShare updates
     await runQuery("dishOrderItemShare - TargetAmount", "IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[dishOrderItemShare]') AND name = 'TargetAmount') ALTER TABLE [dbo].[dishOrderItemShare] ADD TargetAmount DECIMAL(18, 2) DEFAULT 0");
+
+    // 19.1 Create DateEntry table for Day Start/Day End tracking
+    await runQuery("Create DateEntry table", `
+      IF NOT EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[DateEntry]') AND type in (N'U'))
+      BEGIN
+          CREATE TABLE [dbo].[DateEntry](
+              [DateEntryId] [uniqueidentifier] NOT NULL PRIMARY KEY DEFAULT NEWID(),
+              [username] [varchar](30) NULL,
+              [StartDate] [date] NOT NULL,
+              [CreatedBy] [varchar](30) NULL,
+              [CreatedDate] [datetime] DEFAULT GETDATE(),
+              [UpdateBy] [varchar](30) NULL,
+              [UpdateDate] [datetime] NULL
+          )
+      END
+    `);
 
     // 20. Create CashDrawerRemarks table
     await runQuery("Create CashDrawerRemarks table", `

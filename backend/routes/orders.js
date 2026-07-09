@@ -705,6 +705,7 @@ async function syncTableStatus(req, tableId) {
     -- Update TableMaster with DEFINITIVE state
     UPDATE TableMaster 
     SET Status = CASE 
+        WHEN @count = 0 THEN 0
         WHEN Status = 2 THEN 2 
         WHEN Status = 3 THEN 3
         WHEN @count > 0 THEN 1 
@@ -717,16 +718,16 @@ async function syncTableStatus(req, tableId) {
                          WHEN @ActualOrderNo IS NOT NULL AND @ActualOrderNo <> ISNULL(CurrentOrderId, '') THEN GETDATE()
                          -- INITIAL SET: If it was NULL/Invalid and we now have items
                          WHEN (@count > 0 OR Status IN (2, 3)) AND (StartTime IS NULL OR StartTime < '2000-01-01') THEN GETDATE() 
-                         -- Strictly CLEAR StartTime if table is becoming Available
-                         WHEN @count = 0 AND Status NOT IN (2, 3) THEN NULL 
+                         -- Strictly CLEAR StartTime if table has 0 items
+                         WHEN @count = 0 THEN NULL 
                          ELSE StartTime 
                     END,
         CustomerName = CASE 
-                         WHEN @count = 0 AND Status NOT IN (2, 3) THEN NULL 
+                         WHEN @count = 0 THEN NULL 
                          ELSE CustomerName 
                     END,
         Pax = CASE 
-                         WHEN @count = 0 AND Status NOT IN (2, 3) THEN NULL 
+                         WHEN @count = 0 THEN NULL 
                          ELSE Pax 
                     END,
         CurrentOrderId = @ActualOrderNo,

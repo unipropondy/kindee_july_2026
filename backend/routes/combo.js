@@ -150,12 +150,30 @@ router.get("/config/:DishId", async (req, res) => {
         d.currentcost AS DishPrice,
         m.IsDefault,
         m.SortOrder,
-        ISNULL(ckt.KitchenTypeCode, '2') as KitchenTypeCode,
-        ISNULL(ISNULL(ckt.KitchenTypeName, cat.CategoryName), 'KITCHEN') as KitchenTypeName,
-        pm.PrinterPath AS PrinterIP
+        CASE 
+          WHEN ISNULL(ckt.KitchenTypeName, cat.CategoryName) IN ('Add Ons', 'ADD ONS') THEN '8'
+          ELSE ISNULL(ckt.KitchenTypeCode, '2')
+        END as KitchenTypeCode,
+        CASE 
+          WHEN ISNULL(ckt.KitchenTypeName, cat.CategoryName) IN ('Add Ons', 'ADD ONS') THEN 'Beverages'
+          ELSE ISNULL(ISNULL(ckt.KitchenTypeName, cat.CategoryName), 'KITCHEN')
+        END as KitchenTypeName,
+        CASE 
+          WHEN ISNULL(ckt.KitchenTypeName, cat.CategoryName) IN ('Add Ons', 'ADD ONS') THEN '192.168.68.178'
+          ELSE pm.PrinterPath
+        END AS PrinterIP
       FROM ComboGroupDishMapping m WITH (NOLOCK)
       INNER JOIN DishMaster d WITH (NOLOCK) ON m.DishId = d.DishId AND d.IsActive = 1
-      LEFT JOIN DishGroupMaster dgm WITH (NOLOCK) ON d.DishGroupId = dgm.DishGroupId
+      OUTER APPLY (
+        SELECT TOP 1 d2.DishGroupId
+        FROM DishMaster d2 WITH (NOLOCK)
+        INNER JOIN DishGroupMaster dgm2 WITH (NOLOCK) ON d2.DishGroupId = dgm2.DishGroupId
+        INNER JOIN CategoryMaster cat2 WITH (NOLOCK) ON dgm2.CategoryId = cat2.CategoryId
+        WHERE d2.Name = d.Name
+          AND cat2.CategoryName NOT IN ('Add Ons', 'ADD ONS')
+          AND d2.IsActive = 1
+      ) real_d
+      LEFT JOIN DishGroupMaster dgm WITH (NOLOCK) ON COALESCE(real_d.DishGroupId, d.DishGroupId) = dgm.DishGroupId
       LEFT JOIN CategoryMaster cat WITH (NOLOCK) ON dgm.CategoryId = cat.CategoryId
       LEFT JOIN CategoryKitchenType ckt WITH (NOLOCK) ON dgm.CategoryId = ckt.CategoryId
       LEFT JOIN (

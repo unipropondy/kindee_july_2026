@@ -110,9 +110,15 @@ router.get("/config/:DishId", async (req, res) => {
           cgm.MaxSelection,
           cgm.IsMultiSelect
         FROM ComboGroupMaster cgm WITH (NOLOCK)
-        LEFT JOIN ParentDishComboGroupMapping pdcgm WITH (NOLOCK) ON cgm.ComboGroupId = pdcgm.ComboGroupId
-        WHERE (cgm.ParentComboDishId = @DishId OR pdcgm.ParentDishId = @DishId)
-          AND cgm.IsActive = 1
+        WHERE (
+          cgm.ParentComboDishId = @DishId
+          OR cgm.ComboGroupId IN (
+            SELECT pdcgm.ComboGroupId
+            FROM ParentDishComboGroupMapping pdcgm WITH (NOLOCK)
+            WHERE pdcgm.ParentDishId = @DishId
+          )
+        )
+        AND cgm.IsActive = 1
         ORDER BY cgm.DisplayOrder ASC
       `);
 

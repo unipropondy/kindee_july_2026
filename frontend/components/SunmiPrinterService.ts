@@ -730,8 +730,15 @@ class SunmiPrinterService {
 
         const isTw = !!(item.isTakeaway || item.IsTakeaway || item.isTakeAway || item.IsTakeAway);
         if (isTw) {
-          await setSize(fontSizes.note);
+          // Increase size to item size and enable bold
+          await setSize(fontSizes.item);
+          try {
+            if (SunmiModule.setBold) await SunmiModule.setBold(true);
+          } catch (_) {}
           await SunmiModule.printText(formatter.left(`  - Takeaway`));
+          try {
+            if (SunmiModule.setBold) await SunmiModule.setBold(false);
+          } catch (_) {}
           await SunmiModule.lineWrap(1);
         }
 

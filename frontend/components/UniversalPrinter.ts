@@ -1021,7 +1021,7 @@ class UniversalPrinter {
                           </div>
                           ${
                             item.isTakeaway || item.IsTakeaway || item.isTakeAway || item.IsTakeAway
-                              ? `<div class="modifier-list"><span class="modifier-item" style="font-weight: bold;">- Takeaway</span></div>`
+                              ? `<div class="modifier-list"><span class="modifier-item" style="font-size: 20px; font-weight: 900; color: #000;">- Takeaway</span></div>`
                               : ""
                           }
                           ${
@@ -1069,7 +1069,7 @@ class UniversalPrinter {
                       item.IsTakeAway
                         ? `
                       <div class="modifier-list">
-                        <span class="modifier-item" style="font-weight: bold;">- Takeaway</span>
+                        <span class="modifier-item" style="font-size: 20px; font-weight: 900; color: #000;">- Takeaway</span>
                       </div>
                     `
                         : ""
@@ -1195,7 +1195,7 @@ class UniversalPrinter {
             item.IsTakeAway
           );
           if (isTw) {
-            text += `[L]    - Takeaway\n`;
+            text += `[L]    <B>- Takeaway</B>\n`;
           }
 
           if (item.modifiers && item.modifiers.length > 0) {
@@ -1246,7 +1246,7 @@ class UniversalPrinter {
           item.IsTakeAway
         );
         if (isTw) {
-          text += `[L]    - Takeaway\n`;
+          text += `[L]    <B>- Takeaway</B>\n`;
         }
 
         if (item.modifiers && item.modifiers.length > 0) {

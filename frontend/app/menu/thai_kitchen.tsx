@@ -1518,8 +1518,8 @@ export default function MenuScreen() {
           <View style={styles.modalOverlay}>
             <View style={styles.modalContent}>
               <View style={styles.modalHeader}>
-                <View>
-                  <Text style={styles.modalTitle}>
+                <View style={{ flex: 1, marginRight: 10 }}>
+                  <Text style={[styles.modalTitle, { fontSize: 18 }]} numberOfLines={2}>
                     Modifiers {selectedDish.Name}
                   </Text>
                 </View>
@@ -1551,6 +1551,7 @@ export default function MenuScreen() {
                       >
                         <Text style={styles.modifierName}>
                           {m.ModifierName}
+                          {m.Price > 0 ? ` (+$${Number(m.Price).toFixed(2)})` : ""}
                         </Text>
                         <View
                           style={[

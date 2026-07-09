@@ -928,6 +928,7 @@ class UniversalPrinter {
             font-weight: 600;
             flex: 1;
             line-height: 1.1;
+            white-space: pre-wrap;
           }
           
           .modifier-list {
@@ -1173,7 +1174,14 @@ class UniversalPrinter {
         groupItems.forEach((item: any) => {
           const qtyNum = item.quantity || item.qty || 1;
           const itemName = item.name || item.DishName || "";
-          text += `[L]<font size='big'>[${qtyNum}] ${itemName}</font>\n`;
+          const lines = itemName.split("\n");
+          lines.forEach((line: string, idx: number) => {
+            if (idx === 0) {
+              text += `[L]<font size='big'>[${qtyNum}] ${line}</font>\n`;
+            } else {
+              text += `[L]<font size='big'>    ${line}</font>\n`;
+            }
+          });
 
           const songName = item.songName || item.SongName || "";
           if (songName) {
@@ -1217,9 +1225,14 @@ class UniversalPrinter {
       items.forEach((item: any) => {
         const qtyNum = item.quantity || item.qty || 1;
         const itemName = item.name || item.DishName || "";
-
-        // 🚀 Square brackets [1] make quantity very clear and avoid alignment drift
-        text += `[L]<font size='big'>[${qtyNum}] ${itemName}</font>\n`;
+        const lines = itemName.split("\n");
+        lines.forEach((line: string, idx: number) => {
+          if (idx === 0) {
+            text += `[L]<font size='big'>[${qtyNum}] ${line}</font>\n`;
+          } else {
+            text += `[L]<font size='big'>    ${line}</font>\n`;
+          }
+        });
 
         const songName = item.songName || item.SongName || "";
         if (songName) {
@@ -2047,7 +2060,7 @@ class UniversalPrinter {
                     id: opt.dishId,
                     qty: item.quantity || item.qty || 1,
                     price: 0,
-                    name: `${opt.name} (Combo - ${item.name})`,
+                    name: `${opt.name}\n(Combo - ${item.name})`,
                     KitchenTypeCode: optKitchenCode,
                     KitchenTypeName: opt.KitchenTypeName || opt.kitchenTypeName,
                     PrinterIP: opt.PrinterIP || opt.printerIp,

@@ -711,7 +711,15 @@ class SunmiPrinterService {
       await SunmiModule.lineWrap(1);
       for (const item of items) {
         await setSize(fontSizes.item);
-        await SunmiModule.printText(formatter.left(`[${item.qty || item.quantity || 1}] ${item.name}`));
+        const lines = (item.name || "").split("\n");
+        for (let idx = 0; idx < lines.length; idx++) {
+          const line = lines[idx];
+          if (idx === 0) {
+            await SunmiModule.printText(formatter.left(`[${item.qty || item.quantity || 1}] ${line}`));
+          } else {
+            await SunmiModule.printText(formatter.left(`    ${line}`));
+          }
+        }
 
         const songName = item.songName || item.SongName || "";
         if (songName) {

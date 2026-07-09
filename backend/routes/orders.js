@@ -494,10 +494,26 @@ async function syncToProfessionalTables(
           : "fixed";
     itemRequest.input(p_disctype, sql.NVarChar(50), resolvedDiscountType);
 
+    const isTWItem =
+      item.isTakeaway === true ||
+      item.IsTakeaway === true ||
+      item.isTakeAway === true ||
+      item.IsTakeAway === true ||
+      String(item.isTakeaway) === "1" ||
+      String(item.IsTakeaway) === "1" ||
+      String(item.isTakeAway) === "1" ||
+      String(item.IsTakeAway) === "1" ||
+      String(item.isTakeaway).toLowerCase() === "true" ||
+      String(item.IsTakeaway).toLowerCase() === "true" ||
+      String(item.isTakeAway).toLowerCase() === "true" ||
+      String(item.IsTakeAway).toLowerCase() === "true";
+
     const isSC =
-      item.isServiceCharge === true ||
-      String(item.isServiceCharge) === "1" ||
-      String(item.isServiceCharge).toLowerCase() === "true";
+      !isTWItem && (
+        item.isServiceCharge === true ||
+        String(item.isServiceCharge) === "1" ||
+        String(item.isServiceCharge).toLowerCase() === "true"
+      );
     let itemSC = null;
     if (isSC) {
       const qtyVal = Number(item.qty || 1);

@@ -326,7 +326,10 @@ private static escapeHtml(str: string): string {
     const originalSubTotal = grossTotal;
 
     const activeItems = (saleData.items || []).filter((i: any) => i.status !== 'VOIDED' && i.statusCode !== 0);
-    const allItemsHaveSC = activeItems.length > 0 && activeItems.every((item: any) => Number(item.isServiceCharge) === 1 || item.isServiceCharge === true);
+    const allItemsHaveSC = activeItems.length > 0 && activeItems.every((item: any) => {
+      const isTakeawayItem = item.isTakeaway || item.IsTakeaway || item.isTakeAway || item.IsTakeAway;
+      return !isTakeawayItem && (Number(item.isServiceCharge) === 1 || item.isServiceCharge === true);
+    });
 
     const scPercentage = company.serviceChargePercentage || 0;
     const savedServiceCharge = saleData.serviceCharge != null ? parseFloat(String(saleData.serviceCharge)) : null;
@@ -353,7 +356,8 @@ private static escapeHtml(str: string): string {
           }
         }
         const itemSubtotal = baseTotal - itemDiscount;
-        const isSC = Number(item.isServiceCharge) === 1 || item.isServiceCharge === true;
+        const isTakeawayItem = item.isTakeaway || item.IsTakeaway || item.isTakeAway || item.IsTakeAway;
+        const isSC = !isTakeawayItem && (Number(item.isServiceCharge) === 1 || item.isServiceCharge === true);
         if (isSC) {
           scEligibleSubtotal += itemSubtotal;
         }

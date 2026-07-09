@@ -705,8 +705,9 @@ export default function PaymentScreen() {
           }
         }
         const itemSubtotal = baseTotal - itemDiscount;
+        const isTakeawayItem = item.isTakeaway || item.IsTakeaway || item.isTakeAway || item.IsTakeAway;
         const isSC =
-          Number(item.isServiceCharge) === 1 || item.isServiceCharge === true;
+          !isTakeawayItem && (Number(item.isServiceCharge) === 1 || item.isServiceCharge === true);
         return {
           grossTotal: acc.grossTotal + baseTotal,
           totalItemDiscount: acc.totalItemDiscount + itemDiscount,
@@ -731,8 +732,10 @@ export default function PaymentScreen() {
     return (
       activeItems.length > 0 &&
       activeItems.every(
-        (item: any) =>
-          Number(item.isServiceCharge) === 1 || item.isServiceCharge === true,
+        (item: any) => {
+          const isTakeawayItem = item.isTakeaway || item.IsTakeaway || item.isTakeAway || item.IsTakeAway;
+          return !isTakeawayItem && (Number(item.isServiceCharge) === 1 || item.isServiceCharge === true);
+        },
       )
     );
   }, [finalItems]);
@@ -1990,8 +1993,9 @@ export default function PaymentScreen() {
 
     const finalPrice = baseTotal - itemDiscount;
 
+    const isTakeawayItem = item.isTakeaway || item.IsTakeaway || item.isTakeAway || item.IsTakeAway;
     const isSC =
-      (Number(item.isServiceCharge) === 1 || item.isServiceCharge === true) && useGeneralSettingsStore.getState().settings.SVCIdentification !== false;
+      !isTakeawayItem && (Number(item.isServiceCharge) === 1 || item.isServiceCharge === true) && useGeneralSettingsStore.getState().settings.SVCIdentification !== false;
 
     return (
       <View

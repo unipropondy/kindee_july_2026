@@ -494,7 +494,8 @@ const CartItemRow = React.memo(
       item.StatusCode === 0 ||
       item.statusCode === 0;
 
-    const isSC = (Number(item.isServiceCharge) === 1 || item.isServiceCharge === true) && useGeneralSettingsStore.getState().settings.SVCIdentification !== false;
+    const isTakeawayItem = item.isTakeaway || item.IsTakeaway || item.isTakeAway || item.IsTakeAway;
+    const isSC = !isTakeawayItem && (Number(item.isServiceCharge) === 1 || item.isServiceCharge === true) && useGeneralSettingsStore.getState().settings.SVCIdentification !== false;
 
     return (
       <View style={[
@@ -1148,7 +1149,8 @@ export default React.memo(function CartSidebar({ width = 400 }: CartSidebarProps
         }
 
         const itemSubtotal = baseTotal - itemDiscount;
-        const isSC = Number(item.isServiceCharge) === 1 || item.isServiceCharge === true;
+        const isTakeawayItem = item.isTakeaway || item.IsTakeaway || item.isTakeAway || item.IsTakeAway;
+        const isSC = !isTakeawayItem && (Number(item.isServiceCharge) === 1 || item.isServiceCharge === true);
 
         return {
           grossTotal: acc.grossTotal + baseTotal,
@@ -1164,7 +1166,10 @@ export default React.memo(function CartSidebar({ width = 400 }: CartSidebarProps
   const serviceChargeAmt = scEligibleSubtotal * scRate;
   const allItemsHaveSC = useMemo(() => {
     const activeItems = displayItems.filter((i: any) => i.status !== "VOIDED" && i.statusCode !== 0);
-    return activeItems.length > 0 && activeItems.every((item: any) => Number(item.isServiceCharge) === 1 || item.isServiceCharge === true);
+    return activeItems.length > 0 && activeItems.every((item: any) => {
+      const isTakeawayItem = item.isTakeaway || item.IsTakeaway || item.isTakeAway || item.IsTakeAway;
+      return !isTakeawayItem && (Number(item.isServiceCharge) === 1 || item.isServiceCharge === true);
+    });
   }, [displayItems]);
   const taxableAmt = subtotal + serviceChargeAmt;
   const taxAmountRaw = taxableAmt * gstRate;

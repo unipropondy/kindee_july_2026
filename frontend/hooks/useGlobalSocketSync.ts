@@ -72,7 +72,14 @@ export function useGlobalSocketSync() {
         payload?.entryStatus === "q" ||
         payload?.context?.orderSource === "QR";
 
-      if (isQrOrder && payload.items?.length > 0) {
+      const paymentStatus = payload?.context?.paymentStatus !== undefined
+        ? Number(payload.context.paymentStatus)
+        : payload?.paymentStatus !== undefined
+          ? Number(payload.paymentStatus)
+          : 0;
+
+      // Only print QR order KOT/KDS if it's already paid (paymentStatus === 1)
+      if (isQrOrder && paymentStatus === 1 && payload.items?.length > 0) {
         if (__DEV__) {
           console.log("🖨️ [Socket-Global] QR order detected — triggering auto-print for:", payload.orderId);
         }
@@ -296,6 +303,8 @@ export function useGlobalSocketSync() {
             if (__DEV__) console.log(`🚫 [Socket-Global] Settlement cancelled for Order: ${orderId}. Skipping receipt.`);
             return;
           }
+
+          // 1. Print Receipt
           UniversalPrinter.printReceiptAuto(settlementData)
             .then((printed: boolean) => {
               if (__DEV__ && printed) {
@@ -305,6 +314,42 @@ export function useGlobalSocketSync() {
             .catch((err: any) => {
               console.error("❌ [Socket-Global] Auto-receipt print failed:", err);
             });
+
+          // 2. Print KOT & KDS (together with receipt for QR orders)
+          const header = settlementData.header;
+          const items = settlementData.items || [];
+          const orderContext = {
+            orderType: header.OrderType || "DINE-IN",
+            tableNo: header.TableNo || data.tableNo,
+            section: header.Section,
+            tableId: header.TableId || data.tableId,
+          };
+          const waiterName = header.SER_NAME || "QR Order";
+
+          const mappedItems = items.map((i: any) => ({
+            ...i,
+            lineItemId: i.OrderDetailId || i.lineItemId,
+            id: i.DishId || i.id,
+            name: i.DishName || i.name,
+            qty: i.Qty || i.qty,
+            price: i.Price || i.price,
+            status: i.Status || "SENT",
+          }));
+
+          UniversalPrinter.routeAndPrintOrderKOT(
+            orderId,
+            orderContext,
+            mappedItems,
+            false, // isAdditional
+            waiterName,
+            true // skipDuplicateGuard: payment completion is authoritative
+          ).then((printed: boolean) => {
+            if (__DEV__ && printed) {
+              console.log(`✅ [Socket-Global] Auto KOT/KDS printed for QR Order: ${orderId}`);
+            }
+          }).catch((err: any) => {
+            console.error("❌ [Socket-Global] Auto KOT/KDS print failed:", err);
+          });
         })
         .catch((err: any) => {
           console.error(`❌ [Socket-Global] Failed to fetch settlement for QR receipt print:`, err);

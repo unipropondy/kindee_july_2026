@@ -1187,7 +1187,8 @@ export default function SummaryScreen() {
       }
 
       const itemSubtotal = baseTotal - itemDiscount;
-      const isSC = Number(item.isServiceCharge) === 1 || item.isServiceCharge === true;
+      const isTakeawayItem = item.isTakeaway || item.IsTakeaway || item.isTakeAway || item.IsTakeAway;
+      const isSC = !isTakeawayItem && (Number(item.isServiceCharge) === 1 || item.isServiceCharge === true);
 
       return {
         grossTotal: acc.grossTotal + baseTotal,
@@ -1200,7 +1201,10 @@ export default function SummaryScreen() {
   const subtotal = useMemo(() => grossTotal - totalItemDiscount, [grossTotal, totalItemDiscount]);
   const allItemsHaveSC = useMemo(() => {
     const activeItems = finalItems.filter((i: any) => i.status !== "VOIDED" && i.statusCode !== 0);
-    return activeItems.length > 0 && activeItems.every((item: any) => Number(item.isServiceCharge) === 1 || item.isServiceCharge === true);
+    return activeItems.length > 0 && activeItems.every((item: any) => {
+      const isTakeawayItem = item.isTakeaway || item.IsTakeaway || item.isTakeAway || item.IsTakeAway;
+      return !isTakeawayItem && (Number(item.isServiceCharge) === 1 || item.isServiceCharge === true);
+    });
   }, [finalItems]);
 
   const discountAmount = useMemo(() => {
@@ -1514,7 +1518,8 @@ export default function SummaryScreen() {
               windowSize={5}
               removeClippedSubviews={true}
               renderItem={({ item }: { item: any }) => {
-                const isSC = (Number(item.isServiceCharge) === 1 || item.isServiceCharge === true) && useGeneralSettingsStore.getState().settings.SVCIdentification !== false;
+                const isTakeawayItem = item.isTakeaway || item.IsTakeaway || item.isTakeAway || item.IsTakeAway;
+                const isSC = !isTakeawayItem && (Number(item.isServiceCharge) === 1 || item.isServiceCharge === true) && useGeneralSettingsStore.getState().settings.SVCIdentification !== false;
                 return (
                   <View style={[
                     styles.row,

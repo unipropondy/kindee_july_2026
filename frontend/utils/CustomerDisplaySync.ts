@@ -131,7 +131,8 @@ export const CustomerDisplaySync = {
           }
 
           const itemSubtotal = baseTotal - itemDiscount;
-          const isSC = Number(item.isServiceCharge) === 1 || item.isServiceCharge === true;
+          const isTakeawayItem = item.isTakeaway || item.IsTakeaway || item.isTakeAway || item.IsTakeAway;
+          const isSC = !isTakeawayItem && (Number(item.isServiceCharge) === 1 || item.isServiceCharge === true);
 
           return {
             grossTotal: acc.grossTotal + baseTotal,
@@ -201,7 +202,7 @@ export const CustomerDisplaySync = {
           modifiers: item.modifiers || [],
           isCombo: !!item.isCombo,
           comboSelections: item.comboSelections || [],
-          isServiceCharge: Number(item.isServiceCharge) === 1 || item.isServiceCharge === true,
+          isServiceCharge: !(item.isTakeaway || item.IsTakeaway || item.isTakeAway || item.IsTakeAway) && (Number(item.isServiceCharge) === 1 || item.isServiceCharge === true),
         };
       });
 

@@ -732,66 +732,71 @@ class UniversalPrinter {
       }
 
       // ✅ 1. Try Hardware Printer (WiFi or Bluetooth)
-      let isReachable = false;
-      const isIp = targetIp && /^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/.test(targetIp.trim());
-      if (isIp) {
-        isReachable = await this.isIpReachable(targetIp);
-      } else if (targetIp && targetIp.trim().length > 0) {
-        isReachable = true;
-      }
-
-      if (isReachable) {
-        try {
-          const text = this.formatKOTThermalText(orderData, type);
-
-          if (isIp) {
-            console.log(`🌐 KOT WiFi print to: ${targetIp}`);
-            const printPromise = ThermalPrinter.printTcp({
-              ip: targetIp,
-              port: 9100,
-              payload: text,
-              mmFeedPaper: 60,
-            });
-            const timeoutPromise = new Promise((_, reject) =>
-              setTimeout(() => reject(new Error("WiFi Timeout")), 1500),
-            );
-            await Promise.race([printPromise, timeoutPromise]);
-          } else {
-            console.log(`🔵 KOT Bluetooth print to: ${targetIp}`);
-            const printPromise = ThermalPrinter.printBluetooth({
-              macAddress: targetIp,
-              payload: text,
-              mmFeedPaper: 60,
-            });
-            const timeoutPromise = new Promise((_, reject) =>
-              setTimeout(() => reject(new Error("BT Timeout")), 3000),
-            );
-            await Promise.race([printPromise, timeoutPromise]);
-          }
-          await this.logPrintJob(orderData.orderId, orderData.orderNo, type);
-          return true;
-        } catch (printError) {
-          console.warn("❌ Hardware KOT failed/timeout, falling back...");
+      const hasConfiguredIp = targetIp && targetIp.trim().length > 0;
+      if (hasConfiguredIp) {
+        let isReachable = false;
+        const isIp = /^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/.test(targetIp.trim());
+        if (isIp) {
+          isReachable = await this.isIpReachable(targetIp);
+        } else {
+          isReachable = true;
         }
-      }
 
-      // ✅ 2. Try Sunmi direct print (Silent)
-      const sunmiReady = await SunmiPrinterService.init().catch(() => false);
-      if (sunmiReady) {
-        try {
-          const printPromise = SunmiPrinterService.printKOT(orderData, type);
-          const timeoutPromise = new Promise((_, reject) =>
-            setTimeout(() => reject(new Error("Sunmi Timeout")), 2000),
-          );
-          const printed = await Promise.race([printPromise, timeoutPromise]);
+        if (isReachable) {
+          try {
+            const text = this.formatKOTThermalText(orderData, type);
 
-          if (printed) {
-            console.log("✅ KOT Printed with Sunmi - NO PREVIEW");
+            if (isIp) {
+              console.log(`🌐 KOT WiFi print to: ${targetIp}`);
+              const printPromise = ThermalPrinter.printTcp({
+                ip: targetIp,
+                port: 9100,
+                payload: text,
+                mmFeedPaper: 60,
+              });
+              const timeoutPromise = new Promise((_, reject) =>
+                setTimeout(() => reject(new Error("WiFi Timeout")), 1500),
+              );
+              await Promise.race([printPromise, timeoutPromise]);
+            } else {
+              console.log(`🔵 KOT Bluetooth print to: ${targetIp}`);
+              const printPromise = ThermalPrinter.printBluetooth({
+                macAddress: targetIp,
+                payload: text,
+                mmFeedPaper: 60,
+              });
+              const timeoutPromise = new Promise((_, reject) =>
+                setTimeout(() => reject(new Error("BT Timeout")), 3000),
+              );
+              await Promise.race([printPromise, timeoutPromise]);
+            }
             await this.logPrintJob(orderData.orderId, orderData.orderNo, type);
             return true;
+          } catch (printError) {
+            console.warn("❌ Hardware KOT failed/timeout, falling back directly to PDF...");
           }
-        } catch (sunmiErr) {
-          console.warn("❌ Sunmi KOT failed/timeout:", sunmiErr);
+        } else {
+          console.warn(`❌ configured printer IP ${targetIp} not reachable, falling back directly to PDF...`);
+        }
+      } else {
+        // ✅ 2. Try Sunmi direct print (Silent) (Only if IP is NOT entered)
+        const sunmiReady = await SunmiPrinterService.init().catch(() => false);
+        if (sunmiReady) {
+          try {
+            const printPromise = SunmiPrinterService.printKOT(orderData, type);
+            const timeoutPromise = new Promise((_, reject) =>
+              setTimeout(() => reject(new Error("Sunmi Timeout")), 2000),
+            );
+            const printed = await Promise.race([printPromise, timeoutPromise]);
+
+            if (printed) {
+              console.log("✅ KOT Printed with Sunmi - NO PREVIEW");
+              await this.logPrintJob(orderData.orderId, orderData.orderNo, type);
+              return true;
+            }
+          } catch (sunmiErr) {
+            console.warn("❌ Sunmi KOT failed/timeout:", sunmiErr);
+          }
         }
       }
 
@@ -1644,7 +1649,10 @@ class UniversalPrinter {
       (i: any) => i.status !== "VOIDED",
     );
     const activeItems = (saleData.items || []).filter((i: any) => i.status !== "VOIDED" && i.statusCode !== 0);
-    const allItemsHaveSC = activeItems.length > 0 && activeItems.every((item: any) => Number(item.isServiceCharge) === 1 || item.isServiceCharge === true);
+    const allItemsHaveSC = activeItems.length > 0 && activeItems.every((item: any) => {
+      const isTakeawayItem = item.isTakeaway || item.IsTakeaway || item.isTakeAway || item.IsTakeAway;
+      return !isTakeawayItem && (Number(item.isServiceCharge) === 1 || item.isServiceCharge === true);
+    });
 
     printItems.forEach((item: any) => {
       // 🛡️ Robust field mapping
@@ -1674,7 +1682,8 @@ class UniversalPrinter {
         text += `[L]   ${item.name}\n`;
       }
 
-      const isSC = Number(item.isServiceCharge) === 1 || item.isServiceCharge === true;
+      const isTakeawayItem = item.isTakeaway || item.IsTakeaway || item.isTakeAway || item.IsTakeAway;
+      const isSC = !isTakeawayItem && (Number(item.isServiceCharge) === 1 || item.isServiceCharge === true);
       if (isSC && !allItemsHaveSC) {
         text += `[L]   [Service Charge ${company.serviceChargePercentage}%]\n`;
       }
@@ -1806,7 +1815,8 @@ class UniversalPrinter {
           }
         }
         const itemSubtotal = baseTotal - itemDiscount;
-        const isSC = Number(item.isServiceCharge) === 1 || item.isServiceCharge === true;
+        const isTakeawayItem = item.isTakeaway || item.IsTakeaway || item.isTakeAway || item.IsTakeAway;
+        const isSC = !isTakeawayItem && (Number(item.isServiceCharge) === 1 || item.isServiceCharge === true);
         if (isSC) {
           scEligibleSubtotal += itemSubtotal;
         }

@@ -406,7 +406,10 @@ class SunmiPrinterService {
 
       const printItems = (saleData.items || []).filter((i: any) => i.status !== "VOIDED");
       const activeItems = (saleData.items || []).filter((i: any) => i.status !== "VOIDED" && i.statusCode !== 0);
-      const allItemsHaveSC = activeItems.length > 0 && activeItems.every((item: any) => Number(item.isServiceCharge) === 1 || item.isServiceCharge === true);
+      const allItemsHaveSC = activeItems.length > 0 && activeItems.every((item: any) => {
+        const isTakeawayItem = item.isTakeaway || item.IsTakeaway || item.isTakeAway || item.IsTakeAway;
+        return !isTakeawayItem && (Number(item.isServiceCharge) === 1 || item.isServiceCharge === true);
+      });
 
       for (const item of printItems) {
         const fullItemName = item.name || item.DishName || item.ProductName || "";
@@ -429,7 +432,8 @@ class SunmiPrinterService {
           await SunmiModule.printText(formatter.left(`   ` + "🎵 " + songName));
         }
 
-        const isSC = Number(item.isServiceCharge) === 1 || item.isServiceCharge === true;
+        const isTakeawayItem = item.isTakeaway || item.IsTakeaway || item.isTakeAway || item.IsTakeAway;
+        const isSC = !isTakeawayItem && (Number(item.isServiceCharge) === 1 || item.isServiceCharge === true);
         if (isSC && !allItemsHaveSC) {
           await SunmiModule.printText(formatter.left(`    [Service Charge ${companySettings.serviceChargePercentage}%]`));
         }
@@ -531,7 +535,8 @@ class SunmiPrinterService {
             }
           }
           const itemSubtotal = baseTotal - itemDiscount;
-          const isSC = Number(item.isServiceCharge) === 1 || item.isServiceCharge === true;
+          const isTakeawayItem = item.isTakeaway || item.IsTakeaway || item.isTakeAway || item.IsTakeAway;
+          const isSC = !isTakeawayItem && (Number(item.isServiceCharge) === 1 || item.isServiceCharge === true);
           if (isSC) {
             scEligibleSubtotal += itemSubtotal;
           }

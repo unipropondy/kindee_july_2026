@@ -673,11 +673,15 @@ export default function PaymentScreen() {
     selectedMember,
   ]);
 
+  const takeawayCharges = settingsStore.takeawayCharges || 0;
+
   const {
     subtotal,
     grossTotal: payGrossTotal,
     totalItemDiscount: payItemDiscount,
     scEligibleSubtotal,
+    calcTakeawayChargeAmt,
+    takeawayQty,
   } = useMemo(() => {
     if (isLedgerCollection) {
       return {
@@ -685,6 +689,8 @@ export default function PaymentScreen() {
         totalItemDiscount: 0,
         subtotal: collectAmount || 0,
         scEligibleSubtotal: 0,
+        calcTakeawayChargeAmt: 0,
+        takeawayQty: 0,
       };
     }
     const nonVoided = finalItems.filter((i: any) => i.status !== "VOIDED");
@@ -708,12 +714,15 @@ export default function PaymentScreen() {
         const isTakeawayItem = item.isTakeaway || item.IsTakeaway || item.isTakeAway || item.IsTakeAway;
         const isSC =
           !isTakeawayItem && (Number(item.isServiceCharge) === 1 || item.isServiceCharge === true);
+        const itemTWCharge = isTakeawayItem ? (item.qty || 1) * takeawayCharges : 0;
         return {
           grossTotal: acc.grossTotal + baseTotal,
           totalItemDiscount: acc.totalItemDiscount + itemDiscount,
           subtotal: acc.subtotal + itemSubtotal,
           scEligibleSubtotal:
             acc.scEligibleSubtotal + (isSC ? itemSubtotal : 0),
+          calcTakeawayChargeAmt: acc.calcTakeawayChargeAmt + itemTWCharge,
+          takeawayQty: acc.takeawayQty + (isTakeawayItem ? (item.qty || 1) : 0),
         };
       },
       {
@@ -721,9 +730,11 @@ export default function PaymentScreen() {
         totalItemDiscount: 0,
         subtotal: 0,
         scEligibleSubtotal: 0,
+        calcTakeawayChargeAmt: 0,
+        takeawayQty: 0,
       },
     );
-  }, [finalItems, isLedgerCollection, collectAmount]);
+  }, [finalItems, isLedgerCollection, collectAmount, takeawayCharges]);
 
   const allItemsHaveSC = useMemo(() => {
     const activeItems = finalItems.filter(
@@ -760,7 +771,7 @@ export default function PaymentScreen() {
     return Math.max(0, scEligibleSubtotal - proportion * discountAmount);
   }, [scEligibleSubtotal, subtotal, discountAmount, isLedgerCollection]);
 
-  const currentTakeawayCharge = takeawayChargeApplied ? takeawayChargeAmt : 0;
+  const currentTakeawayCharge = isLedgerCollection ? 0 : (finalItems.length > 0 ? calcTakeawayChargeAmt : (takeawayChargeApplied ? takeawayChargeAmt : 0));
   const serviceChargeAmt = isLedgerCollection ? 0 : (scReduced || scReducedLocal ? 0 : scEligibleNet * scRate);
   const taxableAmount = netAfterDiscount + serviceChargeAmt + currentTakeawayCharge;
   const tax = isLedgerCollection ? 0 : taxableAmount * gstRate;
@@ -797,7 +808,7 @@ export default function PaymentScreen() {
       ? parseFloat(
         (
           total -
-          (netAmountForDisplay + displayedServiceCharge + displayedTax)
+          (netAmountForDisplay + displayedServiceCharge + displayedTax + currentTakeawayCharge)
         ).toFixed(2),
       )
       : 0;
@@ -2909,6 +2920,17 @@ export default function PaymentScreen() {
                           <Text style={styles.breakValue}>
                             {currencySymbol}
                             {displayedServiceCharge.toFixed(2)}
+                          </Text>
+                        </View>
+                      )}
+                      {currentTakeawayCharge > 0 && (
+                        <View style={styles.breakRow}>
+                          <Text style={styles.breakLabel}>
+                            Takeaway Charges ({currencySymbol}{takeawayCharges.toFixed(2)} * {takeawayQty})
+                          </Text>
+                          <Text style={styles.breakValue}>
+                            {currencySymbol}
+                            {currentTakeawayCharge.toFixed(2)}
                           </Text>
                         </View>
                       )}

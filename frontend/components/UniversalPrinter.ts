@@ -10,6 +10,7 @@ import { formatToSingaporeDate, formatToSingaporeTime, formatToSingaporeDateTime
 import BillPDFGenerator from "./BillPDFGenerator";
 import { PrinterDetector } from "./PrinterDetector";
 import SunmiPrinterService from "./SunmiPrinterService";
+import { useCompanySettingsStore } from "../stores/companySettingsStore";
 
 // Printer types
 export type PrinterType =
@@ -1836,7 +1837,19 @@ class UniversalPrinter {
     const effectiveSCPercentage = serviceChargeAmount > 0 && currentSubtotal > 0
       ? Math.round((serviceChargeAmount / currentSubtotal) * 100)
       : scPercentage;
-    const takeawayCharge = parseFloat(String(saleData.takeawayCharge || 0)) || 0;
+
+    const companySettings = useCompanySettingsStore.getState().settings;
+    const takeawayRate = companySettings?.takeawayCharges || 0;
+    const takeawayQty = (saleData.items || []).reduce((sum: number, item: any) => {
+      const isTW = item.isTakeaway || item.IsTakeaway || item.isTakeAway || item.IsTakeAway;
+      const isVoided = item.status === "VOIDED" || item.StatusCode === 0;
+      if (isTW && !isVoided) {
+        return sum + (item.qty || item.quantity || 1);
+      }
+      return sum;
+    }, 0);
+
+    const takeawayCharge = takeawayQty * takeawayRate;
     const taxableAmount = currentSubtotal + serviceChargeAmount + takeawayCharge;
     const gstAmountRaw = hasGST ? taxableAmount * (gstRate / 100) : 0;
     const gstAmount = Math.round(gstAmountRaw * 100) / 100;
@@ -1858,7 +1871,7 @@ class UniversalPrinter {
     }
 
     if (takeawayCharge > 0) {
-      text += this.formatTwoCols48("Takeaway Charge:", `${symbol}${takeawayCharge.toFixed(2)}`);
+      text += this.formatTwoCols48(`Takeaway Charges (${symbol}${takeawayRate.toFixed(2)}*${takeawayQty}):`, `${symbol}${takeawayCharge.toFixed(2)}`);
     }
 
     if (hasGST && gstAmount > 0) {

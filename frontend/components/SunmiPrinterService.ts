@@ -2,6 +2,7 @@
 import { Platform, NativeModules } from "react-native";
 import { API_URL } from "../constants/Config";
 import { formatToSingaporeDate, formatToSingaporeTime, parseDatabaseDate } from "../utils/timezoneHelper";
+import { useCompanySettingsStore } from "../stores/companySettingsStore";
 
 const { SunmiPrinterDetector } = NativeModules;
 
@@ -552,7 +553,18 @@ class SunmiPrinterService {
         serviceChargeAmount = scEligibleNet * (scPercentage / 100);
       }
       const hasSC = serviceChargeAmount > 0;
-      const takeawayCharge = parseFloat(String(saleData.takeawayCharge || 0)) || 0;
+      const companySettingsStore = useCompanySettingsStore.getState().settings;
+      const takeawayRate = companySettingsStore?.takeawayCharges || 0;
+      const takeawayQty = (saleData.items || []).reduce((sum: number, item: any) => {
+        const isTW = item.isTakeaway || item.IsTakeaway || item.isTakeAway || item.IsTakeAway;
+        const isVoided = item.status === "VOIDED" || item.StatusCode === 0;
+        if (isTW && !isVoided) {
+          return sum + (item.qty || item.quantity || 1);
+        }
+        return sum;
+      }, 0);
+      const takeawayCharge = takeawayQty * takeawayRate;
+      
       const taxableAmount = currentSubtotal + serviceChargeAmount + takeawayCharge;
       const gstAmountRaw = gstRate > 0 ? taxableAmount * (gstRate / 100) : 0;
       const gstAmount = Math.round(gstAmountRaw * 100) / 100;
@@ -577,7 +589,7 @@ class SunmiPrinterService {
       }
 
       if (takeawayCharge > 0) {
-        await SunmiModule.printText(formatter.twoCols("Takeaway Charge:", `${symbol}${takeawayCharge.toFixed(2)}`));
+        await SunmiModule.printText(formatter.twoCols(`Takeaway Charges (${symbol}${takeawayRate.toFixed(2)}*${takeawayQty}):`, `${symbol}${takeawayCharge.toFixed(2)}`));
       }
 
       if (gstRate > 0) {

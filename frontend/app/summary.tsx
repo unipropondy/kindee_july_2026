@@ -1166,7 +1166,9 @@ export default function SummaryScreen() {
     [finalItems],
   );
 
-  const { grossTotal, totalItemDiscount, scEligibleSubtotal } = useMemo(() => {
+  const takeawayCharges = settings.takeawayCharges || 0;
+
+  const { grossTotal, totalItemDiscount, scEligibleSubtotal, calcTakeawayChargeAmt, takeawayQty } = useMemo(() => {
     return finalItems.reduce((acc: any, item: any) => {
       const isVoided = (item as any).status === "VOIDED";
       if (isVoided) return acc;
@@ -1189,14 +1191,17 @@ export default function SummaryScreen() {
       const itemSubtotal = baseTotal - itemDiscount;
       const isTakeawayItem = item.isTakeaway || item.IsTakeaway || item.isTakeAway || item.IsTakeAway;
       const isSC = !isTakeawayItem && (Number(item.isServiceCharge) === 1 || item.isServiceCharge === true);
+      const itemTWCharge = isTakeawayItem ? item.qty * takeawayCharges : 0;
 
       return {
         grossTotal: acc.grossTotal + baseTotal,
         totalItemDiscount: acc.totalItemDiscount + itemDiscount,
         scEligibleSubtotal: acc.scEligibleSubtotal + (isSC ? itemSubtotal : 0),
+        calcTakeawayChargeAmt: acc.calcTakeawayChargeAmt + itemTWCharge,
+        takeawayQty: acc.takeawayQty + (isTakeawayItem ? item.qty : 0),
       };
-    }, { grossTotal: 0, totalItemDiscount: 0, scEligibleSubtotal: 0 });
-  }, [finalItems]);
+    }, { grossTotal: 0, totalItemDiscount: 0, scEligibleSubtotal: 0, calcTakeawayChargeAmt: 0, takeawayQty: 0 });
+  }, [finalItems, takeawayCharges]);
 
   const subtotal = useMemo(() => grossTotal - totalItemDiscount, [grossTotal, totalItemDiscount]);
   const allItemsHaveSC = useMemo(() => {
@@ -1227,7 +1232,7 @@ export default function SummaryScreen() {
     () => (scReduced ? 0 : scEligibleNet * scRate),
     [scEligibleNet, scRate, scReduced],
   );
-  const currentTakeawayCharge = takeawayChargeApplied ? takeawayChargeAmt : 0;
+  const currentTakeawayCharge = finalItems.length > 0 ? calcTakeawayChargeAmt : (takeawayChargeApplied ? takeawayChargeAmt : 0);
   const taxableAmount = useMemo(() => netAfterDiscount + serviceChargeAmount + currentTakeawayCharge, [netAfterDiscount, serviceChargeAmount, currentTakeawayCharge]);
   const gstAmountRaw = useMemo(() => taxableAmount * gstRate, [taxableAmount, gstRate]);
   // ✅ FIX: Round GST for display so breakdown matches the rounded grand total
@@ -1901,7 +1906,7 @@ export default function SummaryScreen() {
                   </View>
                 )}
 
-                {takeawayChargeApplied && takeawayChargeAmt > 0 && (
+                {currentTakeawayCharge > 0 && (
                   <View
                     style={[
                       styles.summaryRow,
@@ -1915,7 +1920,7 @@ export default function SummaryScreen() {
                         isPhone && !isLandscape && { fontSize: 13 },
                       ]}
                     >
-                      Takeaway Charge
+                      Takeaway Charges ({currencySymbol}{takeawayCharges.toFixed(2)} * {takeawayQty})
                     </Text>
                     <Text
                       style={[
@@ -1924,7 +1929,7 @@ export default function SummaryScreen() {
                       ]}
                     >
                       {currencySymbol}
-                      {takeawayChargeAmt.toFixed(2)}
+                      {currentTakeawayCharge.toFixed(2)}
                     </Text>
                   </View>
                 )}

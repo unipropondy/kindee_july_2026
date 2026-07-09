@@ -373,7 +373,17 @@ private static escapeHtml(str: string): string {
       serviceChargeAmount = scEligibleNet * (scPercentage / 100);
     }
 
-    const takeawayCharge = parseFloat(String(saleData.takeawayCharge || 0)) || 0;
+    const takeawayRate = parseFloat(String((company as any).TakeawayCharges ?? company.takeawayCharges ?? 0)) || 0;
+    const takeawayQty = (saleData.items || []).reduce((sum: number, item: any) => {
+      const isTW = item.isTakeaway || item.IsTakeaway || item.isTakeAway || item.IsTakeAway;
+      const isVoided = item.status === 'VOIDED' || item.StatusCode === 0;
+      if (isTW && !isVoided) {
+        return sum + (item.qty || item.Qty || item.quantity || 1);
+      }
+      return sum;
+    }, 0);
+
+    const takeawayCharge = takeawayQty * takeawayRate;
     const taxableAmount = currentSubtotal + serviceChargeAmount + takeawayCharge;
     const hasSC = serviceChargeAmount > 0;
     const effectiveSCPercentage = serviceChargeAmount > 0 && currentSubtotal > 0
@@ -809,11 +819,11 @@ private static escapeHtml(str: string): string {
              </div>
              ` : ''}
              ${takeawayCharge > 0 ? `
-             <div class="total-row">
-               <span>Takeaway Charge:</span>
-               <span>${currencySymbol}${takeawayCharge.toFixed(2)}</span>
-             </div>
-             ` : ''}
+              <div class="total-row">
+                <span>Takeaway Charges (${currencySymbol}${takeawayRate.toFixed(2)} * ${takeawayQty}):</span>
+                <span>${currencySymbol}${takeawayCharge.toFixed(2)}</span>
+              </div>
+              ` : ''}
              ${hasGST && gstAmount > 0 ? `
              <div class="total-row">
                <span>GST (${gstRate}%):</span>

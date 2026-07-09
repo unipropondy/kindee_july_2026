@@ -928,7 +928,6 @@ class UniversalPrinter {
             font-weight: 600;
             flex: 1;
             line-height: 1.1;
-            white-space: pre-wrap;
           }
           
           .modifier-list {
@@ -1015,7 +1014,7 @@ class UniversalPrinter {
                           <div class="item-main">
                             <div class="item-qty">${item.quantity || item.qty || 1}</div>
                             <div class="item-name">
-                              ${item.name}
+                              ${(item.name || "").replace(/\n/g, '<br/>')}
                               ${item.songName || item.SongName ? `<div style="font-size: 20px; font-weight: normal; color: #555; margin-top: 4px;">🎵 ${item.songName || item.SongName}</div>` : ''}
                             </div>
                           </div>
@@ -1058,7 +1057,7 @@ class UniversalPrinter {
                     <div class="item-main">
                       <div class="item-qty">${item.quantity || item.qty || 1}</div>
                       <div class="item-name">
-                        ${item.name}
+                        ${(item.name || "").replace(/\n/g, '<br/>')}
                         ${item.songName || item.SongName ? `<div style="font-size: 20px; font-weight: normal; color: #555; margin-top: 4px;">🎵 ${item.songName || item.SongName}</div>` : ''}
                       </div>
                     </div>

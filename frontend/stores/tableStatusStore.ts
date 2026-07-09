@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { parseDatabaseDate } from '../utils/timezoneHelper';
 export type TableStatusType = 'EMPTY' | 'HOLD' | 'SENT' | 'BILL_REQUESTED' | 'LOCKED' | 'CART' | 'DELIVERY';
 
 export type TableStatus = {
@@ -79,7 +80,7 @@ export const useTableStatusStore = create<TableStatusState>((set, get) => ({
       }
 
       const parsedStartTime = typeof startTime === 'string' 
-        ? new Date(startTime).getTime() 
+        ? parseDatabaseDate(startTime).getTime() 
         : startTime;
 
       let existingIndex = -1;

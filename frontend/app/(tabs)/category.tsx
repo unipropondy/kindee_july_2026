@@ -29,7 +29,7 @@ import {
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
 import { useToast } from "../../components/Toast";
-import { formatToSingaporeTime, getSingaporeDateString } from "../../utils/timezoneHelper";
+import { formatToSingaporeTime, getSingaporeDateString, parseDatabaseDate } from "../../utils/timezoneHelper";
 
 import StoreSettingsModal from "@/components/payment/StoreSettingsModal";
 import GeneralSettingsModal from "@/components/settings/GeneralSettingsModal";
@@ -131,7 +131,7 @@ const TableItemComponent = React.memo(
       tableData?.startTime ||
       (item.StartTime
         ? typeof item.StartTime === "string"
-          ? new Date(item.StartTime).getTime()
+          ? parseDatabaseDate(item.StartTime).getTime()
           : item.StartTime
         : 0);
     const isOvertime =
@@ -797,7 +797,7 @@ export default function Category() {
         const updates = uniqueTables.map((t) => {
           let finalStartTime = 0;
           if (t.StartTime) {
-            const parsed = new Date(t.StartTime).getTime();
+            const parsed = parseDatabaseDate(t.StartTime).getTime();
             if (!isNaN(parsed)) finalStartTime = parsed;
           }
 

@@ -72,6 +72,28 @@ export function parseDatabaseDate(dateInput: Date | string | number): Date {
   if (typeof dateInput === 'number') return new Date(dateInput);
 
   let str = String(dateInput).trim();
+  
+  // Try custom regex parsing for: "Jul  9 2026  2:12PM"
+  const cleaned = str.replace(/\s+/g, ' ');
+  const match = cleaned.match(/^([a-zA-Z]{3})\s+(\d{1,2})\s+(\d{4})\s+(\d{1,2}):(\d{2})\s*(AM|PM|am|pm)$/);
+  if (match) {
+    const monthMap: Record<string, number> = {
+      jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5,
+      jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11
+    };
+    const [_, monStr, dayStr, yearStr, hourStr, minStr, ampm] = match;
+    const month = monthMap[monStr.toLowerCase()];
+    const day = parseInt(dayStr, 10);
+    const year = parseInt(yearStr, 10);
+    let hour = parseInt(hourStr, 10);
+    const minute = parseInt(minStr, 10);
+    if (ampm.toUpperCase() === 'PM' && hour < 12) hour += 12;
+    if (ampm.toUpperCase() === 'AM' && hour === 12) hour = 0;
+
+    const utcTime = Date.UTC(year, month, day, hour, minute, 0);
+    return new Date(utcTime - 8 * 60 * 60 * 1000); // Shift to SGT (UTC+8)
+  }
+
   if (str.endsWith('Z')) {
     str = str.slice(0, -1) + '+08:00';
   } else if (str.endsWith('+00:00')) {

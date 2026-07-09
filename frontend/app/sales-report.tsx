@@ -282,10 +282,10 @@ export default function SalesReport() {
   }, []);
 
   useEffect(() => {
-    if (activeBusinessDate && selectedDate !== activeBusinessDate) {
+    if (activeBusinessDate) {
       setSelectedDate(activeBusinessDate);
     }
-  }, [activeBusinessDate, selectedDate]);
+  }, [activeBusinessDate]);
 
   useEffect(() => {
     const saveState = async () => {

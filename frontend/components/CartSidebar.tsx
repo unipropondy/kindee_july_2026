@@ -1713,7 +1713,7 @@ export default React.memo(function CartSidebar({ width = 400 }: CartSidebarProps
               {serviceChargeAmt > 0 && (
                 <View style={styles.summaryRow}>
                   <Text style={styles.summaryLabel}>
-                    {allItemsHaveSC ? "Service Charge" : "Item Service Charge"} ({settings.serviceChargePercentage}%)
+                    {allItemsHaveSC ? "Service Charge" : "Item SVC"} ({settings.serviceChargePercentage}%)
                   </Text>
                   <Text style={styles.summaryValue}>
                     {currencySymbol}
@@ -1724,7 +1724,7 @@ export default React.memo(function CartSidebar({ width = 400 }: CartSidebarProps
               {takeawayChargeAmt > 0 && (
                 <View style={styles.summaryRow}>
                   <Text style={styles.summaryLabel}>
-                    Takeaway Charges ({currencySymbol}{takeawayCharges.toFixed(2)} * {takeawayQty})
+                    TW Charges ({currencySymbol}{takeawayCharges.toFixed(2)} * {takeawayQty})
                   </Text>
                   <Text style={styles.summaryValue}>
                     {currencySymbol}

@@ -125,7 +125,7 @@ export default function SummaryScreen() {
   const [isMerging, setIsMerging] = useState(false);
   const [scReduced, setScReduced] = useState(false);
   const [isReducingSC, setIsReducingSC] = useState(false);
-  const [takeawayChargeApplied, setTakeawayChargeApplied] = useState(false);
+  const [takeawayChargeApplied, setTakeawayChargeApplied] = useState(true);
   const [takeawayChargeAmt, setTakeawayChargeAmt] = useState(0);
   const [isApplyingTakeaway, setIsApplyingTakeaway] = useState(false);
   const [splitQuantities, setSplitQuantities] = useState<
@@ -436,13 +436,12 @@ export default function SummaryScreen() {
       })
         .then((r) => r.json())
         .then((d) => {
-          if (d?.takeawayCharge > 0) {
-            setTakeawayChargeApplied(true);
-            setTakeawayChargeAmt(d.takeawayCharge);
-          } else {
+          if (d?.takeawayChargeOverride === 1) {
             setTakeawayChargeApplied(false);
-            setTakeawayChargeAmt(0);
+          } else {
+            setTakeawayChargeApplied(true);
           }
+          setTakeawayChargeAmt(d?.takeawayCharge || 0);
         })
         .catch(() => {});
     }
@@ -1128,33 +1127,7 @@ export default function SummaryScreen() {
 
 
 
-  // 🖥️ CUSTOMER DISPLAY REAL-TIME SYNC
-  useEffect(() => {
-    if (context && finalItems && finalItems.length > 0) {
-      console.log("🖥️ [Summary] Syncing finalItems to Customer Display:", finalItems.length);
-      CustomerDisplaySync.syncCart({
-        orderContext: context,
-        cart: finalItems,
-        discountInfo: discountInfo,
-        gstPercentage: settings.gstPercentage || 0,
-        roundOff: 0,
-        active: true,
-      });
-    } else {
-      console.log("🖥️ [Summary] finalItems empty or null, syncing idle");
-      CustomerDisplaySync.syncIdle();
-    }
-  }, [context, finalItems, discountInfo, settings]);
 
-  // 🖥️ CUSTOMER DISPLAY LIFE CYCLE MANAGER
-  useEffect(() => {
-    CustomerDisplaySync.isPaymentActive = true;
-    return () => {
-      CustomerDisplaySync.isPaymentActive = false;
-      console.log("🖥️ [Summary] Unmounting screen, resetting Customer Display to idle");
-      CustomerDisplaySync.syncIdle();
-    };
-  }, []);
 
   const totalItems = useMemo(
     () =>
@@ -1228,13 +1201,54 @@ export default function SummaryScreen() {
     return Math.max(0, scEligibleSubtotal - proportion * discountAmount);
   }, [scEligibleSubtotal, subtotal, discountAmount]);
 
+  const billDiscountProportion = useMemo(() => {
+    if (!discountInfo?.applied) return 0;
+    if (discountInfo.type === "percentage") {
+      return discountInfo.value / 100;
+    }
+    return subtotal > 0 ? (discountAmount / subtotal) : 0;
+  }, [discountInfo, subtotal, discountAmount]);
+
+  const currentTakeawayCharge = useMemo(() => {
+    if (!takeawayChargeApplied) return 0;
+    return calcTakeawayChargeAmt * (1 - billDiscountProportion);
+  }, [takeawayChargeApplied, calcTakeawayChargeAmt, billDiscountProportion]);
+
   const serviceChargeAmount = useMemo(
     () => (scReduced ? 0 : scEligibleNet * scRate),
     [scEligibleNet, scRate, scReduced],
   );
-  const currentTakeawayCharge = finalItems.length > 0 ? calcTakeawayChargeAmt : (takeawayChargeApplied ? takeawayChargeAmt : 0);
   const taxableAmount = useMemo(() => netAfterDiscount + serviceChargeAmount + currentTakeawayCharge, [netAfterDiscount, serviceChargeAmount, currentTakeawayCharge]);
   const gstAmountRaw = useMemo(() => taxableAmount * gstRate, [taxableAmount, gstRate]);
+
+  // 🖥️ CUSTOMER DISPLAY REAL-TIME SYNC
+  useEffect(() => {
+    if (context && finalItems && finalItems.length > 0) {
+      console.log("🖥️ [Summary] Syncing finalItems to Customer Display:", finalItems.length);
+      CustomerDisplaySync.syncCart({
+        orderContext: context,
+        cart: finalItems,
+        discountInfo: discountInfo,
+        gstPercentage: settings.gstPercentage || 0,
+        roundOff: 0,
+        active: true,
+        takeawayCharge: currentTakeawayCharge,
+      });
+    } else {
+      console.log("🖥️ [Summary] finalItems empty or null, syncing idle");
+      CustomerDisplaySync.syncIdle();
+    }
+  }, [context, finalItems, discountInfo, settings, currentTakeawayCharge]);
+
+  // 🖥️ CUSTOMER DISPLAY LIFE CYCLE MANAGER
+  useEffect(() => {
+    CustomerDisplaySync.isPaymentActive = true;
+    return () => {
+      CustomerDisplaySync.isPaymentActive = false;
+      console.log("🖥️ [Summary] Unmounting screen, resetting Customer Display to idle");
+      CustomerDisplaySync.syncIdle();
+    };
+  }, []);
   // ✅ FIX: Round GST for display so breakdown matches the rounded grand total
   const gstAmount = useMemo(() => Math.round(gstAmountRaw * 100) / 100, [gstAmountRaw]);
   const grandTotal = useMemo(() => Math.round((taxableAmount + gstAmountRaw) * 100) / 100, [taxableAmount, gstAmountRaw]);

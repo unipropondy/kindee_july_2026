@@ -419,7 +419,7 @@ export default function PaymentScreen() {
   const scReducedLocal = useServiceChargeOverrideStore((s) =>
     displayOrderId ? s.overrides[displayOrderId.toLowerCase()] : false
   );
-  const [takeawayChargeApplied, setTakeawayChargeApplied] = useState(false);
+  const [takeawayChargeApplied, setTakeawayChargeApplied] = useState(true);
   const [takeawayChargeAmt, setTakeawayChargeAmt] = useState(0);
 
   useEffect(() => {
@@ -452,13 +452,12 @@ export default function PaymentScreen() {
         .then((r) => r.json())
         .then((d) => {
           console.log("✅ [Payment] Takeaway charge response:", d);
-          if (d?.takeawayCharge > 0) {
-            setTakeawayChargeApplied(true);
-            setTakeawayChargeAmt(d.takeawayCharge);
-          } else {
+          if (d?.takeawayChargeOverride === 1) {
             setTakeawayChargeApplied(false);
-            setTakeawayChargeAmt(0);
+          } else {
+            setTakeawayChargeApplied(true);
           }
+          setTakeawayChargeAmt(d?.takeawayCharge || 0);
         })
         .catch((e) => {
           console.warn("❌ [Payment] Failed to fetch takeaway-charge status:", e);
@@ -613,65 +612,7 @@ export default function PaymentScreen() {
     };
   }, []);
 
-  useEffect(() => {
-    if (!isFocused) {
-      if (pathname !== "/payment_success") {
-        CustomerDisplaySync.isPaymentActive = false;
-        CustomerDisplaySync.syncIdle();
-      }
-      return;
-    }
 
-    CustomerDisplaySync.isPaymentActive = true;
-
-    if (context && finalItems.length > 0) {
-      // Distinguish YeahPay PayNow and YeahPay Card from regular payment modes
-      // so the customer display shows custom cards and avoids static QRs.
-      const selectedMethodObj = paymentMethods.find((m: any) => m.payMode === method);
-      const isYeahPayMode = selectedMethodObj?.yeahPayEnabled === true;
-      const isPayNowPayMode = /PAYNOW|PAY-NOW/i.test(method);
-      const isCardPayMode = /CARD/i.test(method);
-
-      let displayPaymentMethod = method;
-      if (isYeahPayMode) {
-        if (isPayNowPayMode) {
-          displayPaymentMethod = 'YEAHPAY_PAYNOW';
-        } else if (isCardPayMode) {
-          displayPaymentMethod = 'YEAHPAY_CARD';
-        }
-      }
-
-      // Include member name when MEMBER or CREDIT mode is selected
-      const isMemberMode = /^(MEMBER|CREDIT)$/i.test((method || '').trim());
-      const displayMemberName = isMemberMode ? (selectedMember?.Name || '') : '';
-
-      CustomerDisplaySync.syncCart({
-        orderContext: context,
-        cart: finalItems,
-        discountInfo: discount,
-        gstPercentage: settingsStore.gstPercentage || 0,
-        roundOff: roundOff,
-        active: true,
-        orderId: displayOrderId,
-        paymentMethod: displayPaymentMethod,
-        memberName: displayMemberName,
-      });
-    } else {
-      CustomerDisplaySync.syncIdle();
-    }
-  }, [
-    isFocused,
-    pathname,
-    context,
-    finalItems,
-    discount,
-    settingsStore.gstPercentage,
-    roundOff,
-    displayOrderId,
-    method,
-    paymentMethods,
-    selectedMember,
-  ]);
 
   const takeawayCharges = settingsStore.takeawayCharges || 0;
 
@@ -771,7 +712,21 @@ export default function PaymentScreen() {
     return Math.max(0, scEligibleSubtotal - proportion * discountAmount);
   }, [scEligibleSubtotal, subtotal, discountAmount, isLedgerCollection]);
 
-  const currentTakeawayCharge = isLedgerCollection ? 0 : (finalItems.length > 0 ? calcTakeawayChargeAmt : (takeawayChargeApplied ? takeawayChargeAmt : 0));
+  const billDiscountProportion = useMemo(() => {
+    if (isLedgerCollection) return 0;
+    if (!discount?.applied) return 0;
+    if (discount.type === "percentage") {
+      return discount.value / 100;
+    }
+    return subtotal > 0 ? (discountAmount / subtotal) : 0;
+  }, [discount, subtotal, discountAmount, isLedgerCollection]);
+
+  const currentTakeawayCharge = useMemo(() => {
+    if (isLedgerCollection) return 0;
+    if (!takeawayChargeApplied) return 0;
+    return calcTakeawayChargeAmt * (1 - billDiscountProportion);
+  }, [takeawayChargeApplied, calcTakeawayChargeAmt, billDiscountProportion, isLedgerCollection]);
+
   const serviceChargeAmt = isLedgerCollection ? 0 : (scReduced || scReducedLocal ? 0 : scEligibleNet * scRate);
   const taxableAmount = netAfterDiscount + serviceChargeAmt + currentTakeawayCharge;
   const tax = isLedgerCollection ? 0 : taxableAmount * gstRate;
@@ -814,6 +769,68 @@ export default function PaymentScreen() {
       : 0;
   const paidNum = isCashMethod(method) ? parseFloat(cashInput) || 0 : total;
   const change = Math.max(0, paidNum - total);
+
+  useEffect(() => {
+    if (!isFocused) {
+      if (pathname !== "/payment_success") {
+        CustomerDisplaySync.isPaymentActive = false;
+        CustomerDisplaySync.syncIdle();
+      }
+      return;
+    }
+
+    CustomerDisplaySync.isPaymentActive = true;
+
+    if (context && finalItems.length > 0) {
+      // Distinguish YeahPay PayNow and YeahPay Card from regular payment modes
+      // so the customer display shows custom cards and avoids static QRs.
+      const selectedMethodObj = paymentMethods.find((m: any) => m.payMode === method);
+      const isYeahPayMode = selectedMethodObj?.yeahPayEnabled === true;
+      const isPayNowPayMode = /PAYNOW|PAY-NOW/i.test(method);
+      const isCardPayMode = /CARD/i.test(method);
+
+      let displayPaymentMethod = method;
+      if (isYeahPayMode) {
+        if (isPayNowPayMode) {
+          displayPaymentMethod = 'YEAHPAY_PAYNOW';
+        } else if (isCardPayMode) {
+          displayPaymentMethod = 'YEAHPAY_CARD';
+        }
+      }
+
+      // Include member name when MEMBER or CREDIT mode is selected
+      const isMemberMode = /^(MEMBER|CREDIT)$/i.test((method || '').trim());
+      const displayMemberName = isMemberMode ? (selectedMember?.Name || '') : '';
+
+      CustomerDisplaySync.syncCart({
+        orderContext: context,
+        cart: finalItems,
+        discountInfo: discount,
+        gstPercentage: settingsStore.gstPercentage || 0,
+        roundOff: roundOff,
+        active: true,
+        orderId: displayOrderId,
+        paymentMethod: displayPaymentMethod,
+        memberName: displayMemberName,
+        takeawayCharge: currentTakeawayCharge,
+      });
+    } else {
+      CustomerDisplaySync.syncIdle();
+    }
+  }, [
+    isFocused,
+    pathname,
+    context,
+    finalItems,
+    discount,
+    settingsStore.gstPercentage,
+    roundOff,
+    displayOrderId,
+    method,
+    paymentMethods,
+    selectedMember,
+    currentTakeawayCharge,
+  ]);
 
   // ── Quick Cash ─────────────────────────────────────────────────────────────
   const { settings: generalSettings } = useGeneralSettingsStore();

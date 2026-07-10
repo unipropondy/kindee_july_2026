@@ -63,7 +63,7 @@ export default function ComboCustomizer({
   const [selections, setSelections] = useState<Record<string, string[]>>({});
   const [error, setError] = useState<string | null>(null);
   const [dishModifiers, setDishModifiers] = useState<any[]>([]);
-  const [selectedModifierIds, setSelectedModifierIds] = useState<string[]>([]);
+  const [selectedModifierQuantities, setSelectedModifierQuantities] = useState<Record<string, number>>({});
 
   useEffect(() => {
     if (visible && dish) {
@@ -73,7 +73,7 @@ export default function ComboCustomizer({
       setSelections({});
       setError(null);
       setDishModifiers([]);
-      setSelectedModifierIds([]);
+      setSelectedModifierQuantities({});
     }
   }, [visible, dish?.DishId]);
 
@@ -82,7 +82,7 @@ export default function ComboCustomizer({
     setLoading(true);
     setError(null);
     setDishModifiers([]);
-    setSelectedModifierIds([]);
+    setSelectedModifierQuantities({});
     try {
       const token = useAuthStore.getState().token;
 
@@ -247,12 +247,83 @@ export default function ComboCustomizer({
     });
   };
 
-  const handleToggleModifier = (modId: string) => {
-    setSelectedModifierIds((prev) =>
-      prev.includes(modId)
-        ? prev.filter((id) => id !== modId)
-        : [...prev, modId],
-    );
+  // Group modifiers dynamically
+  const groupedModifiers = React.useMemo(() => {
+    const groupsMap: Record<string, {
+      groupId: string;
+      groupName: string;
+      minSelect: number;
+      maxSelect: number;
+      multiselect: boolean;
+      items: any[];
+    }> = {};
+
+    dishModifiers.forEach((m) => {
+      const gId = m.ModifierGroupId || "general";
+      const gName = m.ModifierGroupName || "General Modifiers";
+      const minS = m.MinSelectionCount !== undefined ? Number(m.MinSelectionCount) : 0;
+      const maxS = m.MaxSelectionCount !== undefined ? Number(m.MaxSelectionCount) : 0;
+      const multi = m.MultiselectAllow === 1 || m.MultiselectAllow === true || m.MultiselectAllow === "1" || m.MultiselectAllow === "true";
+
+      if (!groupsMap[gId]) {
+        groupsMap[gId] = {
+          groupId: gId,
+          groupName: gName,
+          minSelect: minS,
+          maxSelect: maxS,
+          multiselect: multi,
+          items: [],
+        };
+      }
+      if (!groupsMap[gId].items.some(x => String(x.ModifierID) === String(m.ModifierID))) {
+        groupsMap[gId].items.push(m);
+      }
+    });
+
+    return Object.values(groupsMap);
+  }, [dishModifiers]);
+
+  const handleToggleModifier = (mod: any, gId: string) => {
+    const key = `${mod.ModifierID}_${gId}`;
+    
+    const group = groupedModifiers.find(g => g.groupId === gId);
+    const maxSelect = group ? group.maxSelect : 0;
+    const multiselect = group ? group.multiselect : false;
+
+    const groupSelectedCount = Object.entries(selectedModifierQuantities)
+      .filter(([k]) => k.endsWith(`_${gId}`))
+      .reduce((sum, [, qty]) => sum + qty, 0);
+
+    setSelectedModifierQuantities((prev) => {
+      const currentQty = prev[key] || 0;
+      const isSelected = currentQty > 0;
+
+      if (isSelected) {
+        const next = { ...prev };
+        delete next[key];
+        return next;
+      } else {
+        if (maxSelect > 0 && groupSelectedCount >= maxSelect) {
+          if (maxSelect === 1) {
+            // Radio button behavior: clear other selections in this group and select this one
+            const next: Record<string, number> = {};
+            Object.entries(prev).forEach(([k, val]) => {
+              if (!k.endsWith(`_${gId}`)) {
+                next[k] = val;
+              }
+            });
+            next[key] = 1;
+            return next;
+          }
+          // Max count > 1: block additional selections
+          return prev;
+        }
+        return {
+          ...prev,
+          [key]: 1,
+        };
+      }
+    });
   };
 
   const handleAddToCart = () => {
@@ -272,18 +343,35 @@ export default function ComboCustomizer({
       }
     }
 
+    // Validate modifier groups minimum selections
+    for (const group of groupedModifiers) {
+      if (group.minSelect > 0) {
+        const groupSelectedCount = Object.entries(selectedModifierQuantities)
+          .filter(([k]) => k.endsWith(`_${group.groupId}`))
+          .reduce((sum, [, qty]) => sum + qty, 0);
+
+        if (groupSelectedCount < group.minSelect) {
+          setError(`Please select at least ${group.minSelect} option(s) for modifier group "${group.groupName}"`);
+          return;
+        }
+      }
+    }
+
     // Build selected modifiers list
-    const chosenModifiers = dishModifiers
-      .filter((m) =>
-        selectedModifierIds.includes(
-          String(m.ModifierID || m.ModifierId || ""),
-        ),
-      )
-      .map((m) => ({
-        ModifierId: String(m.ModifierID || m.ModifierId || ""),
-        ModifierName: m.ModifierName,
-        Price: Number(m.Price || 0),
-      }));
+    const chosenModifiers: any[] = [];
+    Object.entries(selectedModifierQuantities).forEach(([key, qty]) => {
+      if (qty <= 0) return;
+      const [modId] = key.split("_");
+      const m = dishModifiers.find((x) => String(x.ModifierID) === String(modId));
+      if (m) {
+        chosenModifiers.push({
+          ModifierId: String(m.ModifierID || m.ModifierId || ""),
+          ModifierName: m.ModifierName,
+          Price: Number(m.Price || 0),
+          qty: qty,
+        });
+      }
+    });
 
     // Build the selection details payload with surcharge calculations
     const chosenSelections = config.groups.map((group) => {
@@ -342,20 +430,23 @@ export default function ComboCustomizer({
   const handleAddDirectly = () => {
     if (!dish) return;
 
-    const chosenModifiers = dishModifiers
-      .filter((m) =>
-        selectedModifierIds.includes(
-          String(m.ModifierID || m.ModifierId || ""),
-        ),
-      )
-      .map((m) => ({
-        ModifierId: String(m.ModifierID || m.ModifierId || ""),
-        ModifierName: m.ModifierName,
-        Price: Number(m.Price || 0),
-      }));
+    const chosenModifiers: any[] = [];
+    Object.entries(selectedModifierQuantities).forEach(([key, qty]) => {
+      if (qty <= 0) return;
+      const [modId] = key.split("_");
+      const m = dishModifiers.find((x) => String(x.ModifierID) === String(modId));
+      if (m) {
+        chosenModifiers.push({
+          ModifierId: String(m.ModifierID || m.ModifierId || ""),
+          ModifierName: m.ModifierName,
+          Price: Number(m.Price || 0),
+          qty: qty,
+        });
+      }
+    });
 
     const modifierPriceTotal = chosenModifiers.reduce(
-      (sum, m) => sum + m.Price,
+      (sum, m) => sum + Number(m.Price || 0) * (m.qty || 1),
       0,
     );
     const finalPrice = (dish.Price || 0) + modifierPriceTotal;
@@ -506,13 +597,22 @@ export default function ComboCustomizer({
                   });
                 });
 
-                const chosenModifiers = dishModifiers.filter((m) =>
-                  selectedModifierIds.includes(
-                    String(m.ModifierID || m.ModifierId || ""),
-                  ),
-                );
+                const chosenModifiers: any[] = [];
+                Object.entries(selectedModifierQuantities).forEach(([key, qty]) => {
+                  if (qty <= 0) return;
+                  const [modId] = key.split("_");
+                  const m = dishModifiers.find((x) => String(x.ModifierID) === String(modId));
+                  if (m) {
+                    chosenModifiers.push({
+                      ModifierId: String(m.ModifierID || m.ModifierId || ""),
+                      ModifierName: m.ModifierName,
+                      Price: Number(m.Price || 0),
+                      qty: qty,
+                    });
+                  }
+                });
                 const modifierPriceTotal = chosenModifiers.reduce(
-                  (sum, m) => sum + Number(m.Price || 0),
+                  (sum, m) => sum + Number(m.Price || 0) * (m.qty || 1),
                   0,
                 );
                 currentTotal += modifierPriceTotal;
@@ -522,56 +622,81 @@ export default function ComboCustomizer({
                     {dishModifiers.length > 0 && (
                       <View style={{ marginBottom: 20 }}>
                         <Text style={[styles.groupTitle, { marginBottom: 12 }]}>
-                          Add Modifiers (Multiple Selection)
+                          Add Modifiers
                         </Text>
-                        <View style={{ gap: 8 }}>
-                          {dishModifiers.map((m) => {
-                            const isSelected = selectedModifierIds.includes(
-                              String(m.ModifierID || m.ModifierId || ""),
-                            );
-                            return (
-                              <TouchableOpacity
-                                key={m.ModifierID}
-                                style={[
-                                  styles.modifierRow,
-                                  isSelected && styles.modifierRowSelected,
-                                ]}
-                                onPress={() =>
-                                  handleToggleModifier(
-                                    String(m.ModifierID || m.ModifierId || ""),
-                                  )
-                                }
-                                activeOpacity={0.7}
-                              >
-                                <View
-                                  style={{
-                                    flexDirection: "row",
-                                    alignItems: "center",
-                                    gap: 10,
-                                  }}
-                                >
-                                  <Ionicons
-                                    name={
-                                      isSelected ? "checkbox" : "square-outline"
-                                    }
-                                    size={20}
-                                    color={
-                                      isSelected ? Theme.primary : "#7F8C8D"
-                                    }
-                                  />
-                                  <Text style={styles.modifierName}>
-                                    {m.ModifierName}
+                        
+                        {groupedModifiers.map((group) => {
+                          const gId = group.groupId;
+                          const gName = group.groupName;
+                          const maxSelect = group.maxSelect;
+                          const minSelect = group.minSelect;
+                          
+                          const groupSelectedCount = Object.entries(selectedModifierQuantities)
+                            .filter(([k]) => k.endsWith(`_${gId}`))
+                            .reduce((sum, [, q]) => sum + q, 0);
+
+                          return (
+                            <View key={gId} style={{ marginBottom: 15 }}>
+                              {groupedModifiers.length > 1 && (
+                                <View style={styles.modifierGroupHeader}>
+                                  <Text style={styles.modifierGroupName}>{gName}</Text>
+                                  <Text style={styles.modifierGroupLimits}>
+                                    {minSelect > 0 && maxSelect > 0 && `(Select ${minSelect} to ${maxSelect})`}
+                                    {minSelect > 0 && maxSelect === 0 && `(Select at least ${minSelect})`}
+                                    {minSelect === 0 && maxSelect > 0 && `(Select up to ${maxSelect})`}
+                                    {minSelect === 0 && maxSelect === 0 && `(Optional)`}
+                                    {` - Selected: ${groupSelectedCount}`}
                                   </Text>
                                 </View>
-                                {m.Price > 0 && (
-                                  <Text style={styles.modifierPrice}>
-                                    +${Number(m.Price).toFixed(2)}
-                                  </Text>
-                                )}
-                              </TouchableOpacity>
-                            );
-                          })}
-                        </View>
+                              )}
+
+                              <View style={styles.modifierGrid}>
+                                {group.items.map((m) => {
+                                  const key = `${m.ModifierID}_${gId}`;
+                                  const qty = selectedModifierQuantities[key] || 0;
+                                  const isSelected = qty > 0;
+                                  const isDisabled = maxSelect > 0 && groupSelectedCount >= maxSelect && qty === 0;
+
+                                  return (
+                                    <TouchableOpacity
+                                      key={m.ModifierID}
+                                      style={[
+                                        styles.modifierCard,
+                                        isSelected && styles.modifierCardSelected,
+                                        isDisabled && { opacity: 0.5 }
+                                      ]}
+                                      onPress={() => {
+                                        if (isSelected || !isDisabled) {
+                                          handleToggleModifier(m, gId);
+                                        }
+                                      }}
+                                      disabled={isDisabled}
+                                      activeOpacity={0.7}
+                                    >
+                                      <Text style={[styles.modifierCardName, isSelected && styles.modifierCardTextSelected]}>
+                                        {m.ModifierName}
+                                      </Text>
+                                      {m.Price > 0 && (
+                                        <Text style={[styles.modifierCardPrice, isSelected && styles.modifierCardTextSelected]}>
+                                          +${Number(m.Price).toFixed(2)}
+                                        </Text>
+                                      )}
+                                      {isSelected && (
+                                        <View style={styles.modifierCheckmarkWrap}>
+                                          <Ionicons
+                                            name="checkmark-circle"
+                                            size={18}
+                                            color={Theme.primary}
+                                          />
+                                        </View>
+                                      )}
+                                    </TouchableOpacity>
+                                  );
+                                })}
+                              </View>
+                            </View>
+                          );
+                        })}
                       </View>
                     )}
 
@@ -813,28 +938,74 @@ const styles = StyleSheet.create({
     fontSize: 16,
     letterSpacing: 0.5,
   },
-  modifierRow: {
+  modifierGrid: {
     flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    padding: 14,
-    borderWidth: 1,
-    borderColor: "#EAECEE",
-    borderRadius: 10,
-    backgroundColor: "#FAF9F6",
+    flexWrap: "wrap",
+    gap: 12,
+    marginTop: 8,
   },
-  modifierRowSelected: {
+  modifierCard: {
+    width: "48%",
+    backgroundColor: "#FAF9F6",
+    borderWidth: 1.5,
+    borderColor: "#EAECEE",
+    borderRadius: 14,
+    paddingVertical: 14,
+    paddingHorizontal: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    position: "relative",
+    minHeight: 70,
+  },
+  modifierCardSelected: {
     borderColor: Theme.primary,
     backgroundColor: "#FFF5EB",
   },
-  modifierName: {
-    fontSize: 14,
-    fontFamily: Fonts.medium,
+  modifierCardName: {
+    fontSize: 13,
+    fontFamily: Fonts.bold,
     color: "#2C3E50",
+    textAlign: "center",
   },
-  modifierPrice: {
-    fontSize: 14,
+  modifierCardTextSelected: {
+    color: Theme.primary,
+  },
+  modifierCardPrice: {
+    fontSize: 11,
     fontFamily: Fonts.bold,
     color: Theme.primary,
+    marginTop: 4,
+    backgroundColor: "#FFEEDB",
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 8,
+    overflow: "hidden",
+  },
+  modifierCheckmarkWrap: {
+    position: "absolute",
+    top: -6,
+    right: -6,
+    zIndex: 10,
+  },
+  modifierGroupHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    backgroundColor: "#F2F4F4",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    marginBottom: 8,
+    marginTop: 12,
+  },
+  modifierGroupName: {
+    fontSize: 14,
+    fontFamily: Fonts.bold,
+    color: "#2C3E50",
+  },
+  modifierGroupLimits: {
+    fontSize: 11,
+    fontFamily: Fonts.bold,
+    color: "#7F8C8D",
   },
 });

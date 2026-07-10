@@ -369,7 +369,7 @@ export default function MenuScreen() {
   const [songName, setSongName] = useState("");
 
   const [selectedDish, setSelectedDish] = useState<any | null>(null);
-  const [selectedModifierIds, setSelectedModifierIds] = useState<string[]>([]);
+  const [selectedModifierQuantities, setSelectedModifierQuantities] = useState<Record<string, number>>({});
   const [loadingModifiers, setLoadingModifiers] = useState(false);
 
   // Open Item modal state
@@ -1005,7 +1005,7 @@ export default function MenuScreen() {
       if (cachedData) {
         if (cachedData.length > 0) {
           setSelectedDish(dish);
-          setSelectedModifierIds([]);
+          setSelectedModifierQuantities({});
           setCustomMods([]);
           setModifiers(cachedData);
           setShowModifier(true);
@@ -1018,7 +1018,7 @@ export default function MenuScreen() {
       // No need to set isAdding state for UI blocking
       setLoadingModifiers(true);
       setSelectedDish(dish);
-      setSelectedModifierIds([]);
+      setSelectedModifierQuantities({});
       setCustomMods([]);
 
       try {
@@ -1042,6 +1042,81 @@ export default function MenuScreen() {
     [selectedKitchenId, kitchens, modifierCache],
   );
 
+  // Group modifiers dynamically
+  const groupedModifiers = React.useMemo(() => {
+    const groupsMap: Record<string, {
+      groupId: string;
+      groupName: string;
+      minSelect: number;
+      maxSelect: number;
+      multiselect: boolean;
+      items: any[];
+    }> = {};
+
+    const allMods = [...modifiers, ...customMods];
+
+    allMods.forEach((m) => {
+      const gId = m.ModifierGroupId || "general";
+      const gName = m.ModifierGroupName || "General Modifiers";
+      const minS = m.MinSelectionCount !== undefined ? Number(m.MinSelectionCount) : 0;
+      const maxS = m.MaxSelectionCount !== undefined ? Number(m.MaxSelectionCount) : 0;
+      const multi = m.MultiselectAllow === 1 || m.MultiselectAllow === true || m.MultiselectAllow === "1" || m.MultiselectAllow === "true";
+
+      if (!groupsMap[gId]) {
+        groupsMap[gId] = {
+          groupId: gId,
+          groupName: gName,
+          minSelect: minS,
+          maxSelect: maxS,
+          multiselect: multi,
+          items: [],
+        };
+      }
+      if (!groupsMap[gId].items.some(x => String(x.ModifierID) === String(m.ModifierID))) {
+        groupsMap[gId].items.push(m);
+      }
+    });
+
+    return Object.values(groupsMap);
+  }, [modifiers, customMods]);
+
+  const adjustModifierQuantity = (mod: any, gId: string, delta: number) => {
+    const key = `${mod.ModifierID}_${gId}`;
+    
+    const group = groupedModifiers.find(g => g.groupId === gId);
+    const maxSelect = group ? group.maxSelect : 0;
+    const multiselect = group ? group.multiselect : false;
+
+    const groupSelectedCount = Object.entries(selectedModifierQuantities)
+      .filter(([k]) => k.endsWith(`_${gId}`))
+      .reduce((sum, [, qty]) => sum + qty, 0);
+
+    setSelectedModifierQuantities((prev) => {
+      const currentQty = prev[key] || 0;
+      let newQty = currentQty + delta;
+      if (newQty < 0) newQty = 0;
+
+      if (!multiselect && newQty > 1) {
+        newQty = 1;
+      }
+
+      if (delta > 0 && maxSelect > 0) {
+        if (groupSelectedCount + delta > maxSelect) {
+          showToast({ type: "error", message: `You can select at most ${maxSelect} items in ${group?.groupName}.` });
+          return prev;
+        }
+      }
+
+      const next = { ...prev };
+      if (newQty === 0) {
+        delete next[key];
+      } else {
+        next[key] = newQty;
+      }
+      return next;
+    });
+  };
+
   const renderDishItem = React.useCallback(
     ({ item }: { item: any }) => {
       return (
@@ -1064,12 +1139,15 @@ export default function MenuScreen() {
       return;
     }
 
-    setSelectedModifierIds((prev) => {
-      const next = prev.includes(mod.ModifierID)
-        ? prev.filter((id) => id !== mod.ModifierID)
-        : [...prev, mod.ModifierID];
-      return next;
-    });
+    const gId = mod.ModifierGroupId || "general";
+    const key = `${mod.ModifierID}_${gId}`;
+    const isSelected = !!selectedModifierQuantities[key];
+
+    if (isSelected) {
+      adjustModifierQuantity(mod, gId, -1);
+    } else {
+      adjustModifierQuantity(mod, gId, 1);
+    }
   };
 
   const addCustomMod = () => {
@@ -1079,10 +1157,18 @@ export default function MenuScreen() {
       ModifierID: newId,
       ModifierName: customItemName,
       Price: parseFloat(customItemPrice) || 0,
+      ModifierGroupId: "general",
+      ModifierGroupName: "General Modifiers",
+      MinSelectionCount: 0,
+      MaxSelectionCount: 0,
+      MultiselectAllow: 0
     };
 
     setCustomMods((prev) => [...prev, newMod]);
-    setSelectedModifierIds((prev) => [...prev, newId]);
+    setSelectedModifierQuantities((prev) => ({
+      ...prev,
+      [`${newId}_general`]: 1
+    }));
 
     setShowCustomModal(false);
     setCustomItemName("");
@@ -1093,17 +1179,37 @@ export default function MenuScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     if (selectedDish) {
       const allAvailable = [...modifiers, ...customMods];
-      const selectedMods = allAvailable.filter((m) =>
-        selectedModifierIds.includes(m.ModifierID),
-      );
 
-      const modsToAdd = selectedMods.map((m) => ({
-        ModifierId: String(m.ModifierID || m.ModifierId || ""),
-        ModifierName: m.ModifierName,
-        Price: Number(m.Price || 0),
-      }));
+      // Validate Min Selection Count
+      for (const group of groupedModifiers) {
+        if (group.minSelect > 0) {
+          const groupSelectedCount = Object.entries(selectedModifierQuantities)
+            .filter(([k]) => k.endsWith(`_${group.groupId}`))
+            .reduce((sum, [, qty]) => sum + qty, 0);
 
-      const extra = modsToAdd.reduce((sum, m) => sum + (m.Price || 0), 0);
+          if (groupSelectedCount < group.minSelect) {
+            alert(`Please select at least ${group.minSelect} items from ${group.groupName}.`);
+            return;
+          }
+        }
+      }
+
+      const modsToAdd: any[] = [];
+      Object.entries(selectedModifierQuantities).forEach(([key, qty]) => {
+        if (qty <= 0) return;
+        const [modId] = key.split("_");
+        const m = allAvailable.find((x) => String(x.ModifierID) === String(modId));
+        if (m) {
+          modsToAdd.push({
+            ModifierId: String(m.ModifierID || m.ModifierId || ""),
+            ModifierName: m.ModifierName,
+            Price: Number(m.Price || 0),
+            qty: qty,
+          });
+        }
+      });
+
+      const extra = modsToAdd.reduce((sum, m) => sum + (m.Price || 0) * (m.qty || 1), 0);
       const finalPrice = (selectedDish.Price || 0) + extra;
 
       const currentKitchen = kitchens.find(
@@ -1543,29 +1649,107 @@ export default function MenuScreen() {
                     style={styles.modifierList}
                     showsVerticalScrollIndicator={false}
                   >
-                    {modifiers.map((m) => (
-                      <TouchableOpacity
-                        key={m.ModifierID}
-                        style={styles.modifierRow}
-                        onPress={() => toggleModifier(m)}
-                      >
-                        <Text style={styles.modifierName}>
-                          {m.ModifierName}
-                          {m.Price > 0 ? ` (+$${Number(m.Price).toFixed(2)})` : ""}
-                        </Text>
-                        <View
-                          style={[
-                            styles.checkbox,
-                            selectedModifierIds.includes(m.ModifierID) &&
-                            styles.checkboxActive,
-                          ]}
-                        >
-                          {selectedModifierIds.includes(m.ModifierID) && (
-                            <Ionicons name="checkmark" size={14} color="#fff" />
+                    {groupedModifiers.map((group) => {
+                      const gId = group.groupId;
+                      const gName = group.groupName;
+                      const maxSelect = group.maxSelect;
+                      const minSelect = group.minSelect;
+                      const multiselect = group.multiselect;
+                      
+                      const groupSelectedCount = Object.entries(selectedModifierQuantities)
+                        .filter(([k]) => k.endsWith(`_${gId}`))
+                        .reduce((sum, [, q]) => sum + q, 0);
+
+                      return (
+                        <View key={gId} style={styles.modifierGroupContainer}>
+                          {groupedModifiers.length > 1 && (
+                            <View style={styles.modifierGroupHeader}>
+                              <Text style={styles.modifierGroupName}>{gName}</Text>
+                              <Text style={styles.modifierGroupLimits}>
+                                {minSelect > 0 && maxSelect > 0 && `(Select ${minSelect} to ${maxSelect})`}
+                                {minSelect > 0 && maxSelect === 0 && `(Select at least ${minSelect})`}
+                                {minSelect === 0 && maxSelect > 0 && `(Select up to ${maxSelect})`}
+                                {minSelect === 0 && maxSelect === 0 && `(Optional)`}
+                                {` - Selected: ${groupSelectedCount}`}
+                              </Text>
+                            </View>
                           )}
+                          <View style={styles.modifierGrid}>
+                            {group.items.map((m) => {
+                              const key = `${m.ModifierID}_${gId}`;
+                              const qty = selectedModifierQuantities[key] || 0;
+                              const isSelected = qty > 0;
+                              const isDisabled = maxSelect > 0 && groupSelectedCount >= maxSelect && qty === 0;
+
+                              return (
+                                <TouchableOpacity
+                                  key={m.ModifierID}
+                                  style={[
+                                    styles.modifierCard,
+                                    isSelected && styles.modifierCardSelected,
+                                    isDisabled && { opacity: 0.5 }
+                                  ]}
+                                  onPress={() => {
+                                    if (isSelected || !isDisabled) {
+                                      if (multiselect) {
+                                        adjustModifierQuantity(m, gId, isSelected ? -1 : 1);
+                                      } else {
+                                        toggleModifier(m);
+                                      }
+                                    }
+                                  }}
+                                  disabled={isDisabled}
+                                  activeOpacity={0.7}
+                                >
+                                  <Text style={[styles.modifierCardName, isSelected && styles.modifierCardTextSelected]}>
+                                    {m.ModifierName}
+                                  </Text>
+                                  {m.Price > 0 && (
+                                    <Text style={[styles.modifierCardPrice, isSelected && styles.modifierCardTextSelected]}>
+                                      +${Number(m.Price).toFixed(2)}
+                                    </Text>
+                                  )}
+                                  {isSelected && (
+                                    <View style={styles.modifierCheckmarkWrap}>
+                                      <Ionicons
+                                        name="checkmark-circle"
+                                        size={18}
+                                        color={Theme.primary}
+                                      />
+                                    </View>
+                                  )}
+
+                                  {multiselect && isSelected ? (
+                                    <View style={styles.modifierCardQtyContainer}>
+                                      <TouchableOpacity
+                                        onPress={(e) => {
+                                          e.stopPropagation();
+                                          adjustModifierQuantity(m, gId, -1);
+                                        }}
+                                        style={styles.modifierCardQtyBtn}
+                                      >
+                                        <Ionicons name="remove" size={12} color={Theme.primary} />
+                                      </TouchableOpacity>
+                                      <Text style={styles.modifierCardQtyText}>{qty}</Text>
+                                      <TouchableOpacity
+                                        onPress={(e) => {
+                                          e.stopPropagation();
+                                          adjustModifierQuantity(m, gId, 1);
+                                        }}
+                                        disabled={isDisabled}
+                                        style={[styles.modifierCardQtyBtn, isDisabled && { borderColor: '#ddd' }]}
+                                      >
+                                        <Ionicons name="add" size={12} color={isDisabled ? '#ccc' : Theme.primary} />
+                                      </TouchableOpacity>
+                                    </View>
+                                  ) : null}
+                                </TouchableOpacity>
+                              );
+                            })}
+                          </View>
                         </View>
-                      </TouchableOpacity>
-                    ))}
+                      );
+                    })}
                   </ScrollView>
                 )}
               </View>
@@ -2119,14 +2303,21 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingVertical: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: Theme.bgMain,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: "#EAECEE",
+    borderRadius: 10,
+    backgroundColor: "#FAF9F6",
+    marginBottom: 8,
+  },
+  modifierRowSelected: {
+    borderColor: Theme.primary,
+    backgroundColor: "#FFF5EB",
   },
   modifierName: {
     color: Theme.textPrimary,
-    fontSize: 16,
-    fontFamily: Fonts.bold,
+    fontSize: 15,
+    fontFamily: Fonts.medium,
   },
   checkbox: {
     width: 26,
@@ -2253,5 +2444,125 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontFamily: Fonts.bold,
     color: Theme.textMuted,
+  },
+  modifierGroupContainer: {
+    marginBottom: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: "#eee",
+    paddingBottom: 15,
+  },
+  modifierGroupHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    backgroundColor: "#f8fafc",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    marginBottom: 8,
+  },
+  modifierGroupName: {
+    fontSize: 15,
+    fontFamily: Fonts.black,
+    color: Theme.primary,
+  },
+  modifierGroupLimits: {
+    fontSize: 11,
+    fontFamily: Fonts.bold,
+    color: Theme.textSecondary,
+  },
+  qtyContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  qtyBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: Theme.primary,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#fff",
+  },
+  qtyText: {
+    fontSize: 16,
+    fontFamily: Fonts.bold,
+    color: Theme.textPrimary,
+    minWidth: 20,
+    textAlign: "center",
+  },
+  modifierGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 12,
+    marginTop: 8,
+  },
+  modifierCard: {
+    width: "48%",
+    backgroundColor: "#FAF9F6",
+    borderWidth: 1.5,
+    borderColor: "#EAECEE",
+    borderRadius: 14,
+    paddingVertical: 14,
+    paddingHorizontal: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    position: "relative",
+    minHeight: 70,
+  },
+  modifierCardSelected: {
+    borderColor: Theme.primary,
+    backgroundColor: "#FFF5EB",
+  },
+  modifierCardName: {
+    fontSize: 13,
+    fontFamily: Fonts.bold,
+    color: "#2C3E50",
+    textAlign: "center",
+  },
+  modifierCardTextSelected: {
+    color: Theme.primary,
+  },
+  modifierCardPrice: {
+    fontSize: 11,
+    fontFamily: Fonts.bold,
+    color: Theme.primary,
+    marginTop: 4,
+    backgroundColor: "#FFEEDB",
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 8,
+    overflow: "hidden",
+  },
+  modifierCheckmarkWrap: {
+    position: "absolute",
+    top: -6,
+    right: -6,
+    zIndex: 10,
+  },
+  modifierCardQtyContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 6,
+  },
+  modifierCardQtyBtn: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 1,
+    borderColor: Theme.primary,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#fff",
+  },
+  modifierCardQtyText: {
+    fontSize: 13,
+    fontFamily: Fonts.bold,
+    color: Theme.textPrimary,
+    minWidth: 14,
+    textAlign: "center",
   },
 });

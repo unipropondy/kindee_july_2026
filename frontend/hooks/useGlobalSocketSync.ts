@@ -140,19 +140,13 @@ export function useGlobalSocketSync() {
         );
       }
 
-      // 🚀 INSTANT SYNC: Apply the status update immediately
-      if (existingTable || (data.tableNo && data.section)) {
-        const sectionMap: Record<string, string> = { "1": "SECTION_1", "2": "SECTION_2", "3": "SECTION_3", "4": "TAKEAWAY" };
-        const rawSection = existingTable?.section || data.section;
-        const normalizedSection = sectionMap[String(rawSection)] || rawSection;
-        const cleanTableNo = existingTable?.tableNo || (data.tableNo ? String(data.tableNo).trim() : "");
-
+        const computedStatus = (status === 5 ? "LOCKED" : (status === 1 || status === 4) ? "SENT" : status === 2 ? "BILL_REQUESTED" : status === 3 ? "HOLD" : "EMPTY");
         store.updateTableStatus(
           tableId,
           normalizedSection,
           cleanTableNo,
           currentOrderId || "SYNC",
-          (status === 5 ? "LOCKED" : (status === 1 || status === 4) ? "SENT" : status === 2 ? "BILL_REQUESTED" : status === 3 ? "HOLD" : "EMPTY") as any,
+          computedStatus as any,
           startTime,
           lockedByName,
           totalAmount,
@@ -163,6 +157,10 @@ export function useGlobalSocketSync() {
           customerName,
           pax
         );
+
+        if (computedStatus === "EMPTY" && tableId) {
+          useCartStore.getState().clearTableSession(tableId);
+        }
       }
 
       // ⚡ Only refresh cart if the Order ID has changed or if we're missing items
@@ -278,6 +276,10 @@ export function useGlobalSocketSync() {
         return true;
       });
       useActiveOrdersStore.setState({ activeOrders: filtered });
+
+      if (tableId) {
+        useCartStore.getState().clearTableSession(tableId);
+      }
     };
 
     // --- 5.6 QR PAYMENT CONFIRMED (AUTO RECEIPT PRINT) ---

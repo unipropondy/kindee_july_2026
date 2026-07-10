@@ -831,12 +831,35 @@ export const useCartStore = create<CartState>()(
           const newLastLocalUpdate = { ...state.lastLocalUpdate };
           const newLastServerSync = { ...state.lastServerSync };
 
-          // 🚀 Comprehensive cleanup for ALL contexts related to this table
-          Object.keys(newCarts).forEach(ctx => { if (ctx.includes(tableId)) delete newCarts[ctx]; });
-          Object.keys(newDiscounts).forEach(ctx => { if (ctx.includes(tableId)) delete newDiscounts[ctx]; });
+          // 🚀 Clean up tableOrderIds
           delete newTableOrderIds[tableId];
-          Object.keys(newLastLocalUpdate).forEach(ctx => { if (ctx.includes(tableId)) delete newLastLocalUpdate[ctx]; });
-          Object.keys(newLastServerSync).forEach(ctx => { if (ctx.includes(tableId)) delete newLastServerSync[ctx]; });
+
+          // 🚀 Find table section & tableNo to also match suffix contextIds (e.g. DINE_IN_SECTION_1_5)
+          const { useTableStatusStore } = require("./tableStatusStore");
+          const tables = useTableStatusStore.getState().tables || [];
+          const cleanTargetId = String(tableId || "").replace(/^\{|\}$/g, "").trim().toLowerCase();
+          const targetTable = tables.find((t: any) => {
+            const tId = String(t.tableId || "").replace(/^\{|\}$/g, "").trim().toLowerCase();
+            return tId === cleanTargetId;
+          });
+
+          const matchContextSuffixes: string[] = [];
+          if (targetTable) {
+            matchContextSuffixes.push(`_${targetTable.section}_${targetTable.tableNo}`);
+            matchContextSuffixes.push(`_${targetTable.tableNo}`);
+          }
+
+          const matchKey = (ctx: string) => {
+            const matchesId = ctx.includes(tableId);
+            const matchesSuffix = matchContextSuffixes.some(suffix => ctx.endsWith(suffix));
+            return matchesId || matchesSuffix;
+          };
+
+          // 🚀 Comprehensive cleanup for ALL matching contexts
+          Object.keys(newCarts).forEach(ctx => { if (matchKey(ctx)) delete newCarts[ctx]; });
+          Object.keys(newDiscounts).forEach(ctx => { if (matchKey(ctx)) delete newDiscounts[ctx]; });
+          Object.keys(newLastLocalUpdate).forEach(ctx => { if (matchKey(ctx)) delete newLastLocalUpdate[ctx]; });
+          Object.keys(newLastServerSync).forEach(ctx => { if (matchKey(ctx)) delete newLastServerSync[ctx]; });
 
           if (__DEV__) console.log(`🧹 [CartStore] Table session cleared: ${tableId}`);
 

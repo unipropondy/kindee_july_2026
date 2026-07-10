@@ -140,6 +140,13 @@ export function useGlobalSocketSync() {
         );
       }
 
+      // 🚀 INSTANT SYNC: Apply the status update immediately
+      if (existingTable || (data.tableNo && data.section)) {
+        const sectionMap: Record<string, string> = { "1": "SECTION_1", "2": "SECTION_2", "3": "SECTION_3", "4": "TAKEAWAY" };
+        const rawSection = existingTable?.section || data.section;
+        const normalizedSection = sectionMap[String(rawSection)] || rawSection;
+        const cleanTableNo = existingTable?.tableNo || (data.tableNo ? String(data.tableNo).trim() : "");
+
         const computedStatus = (status === 5 ? "LOCKED" : (status === 1 || status === 4) ? "SENT" : status === 2 ? "BILL_REQUESTED" : status === 3 ? "HOLD" : "EMPTY");
         store.updateTableStatus(
           tableId,

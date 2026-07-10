@@ -621,9 +621,19 @@ export default function ComboCustomizer({
                   <View style={styles.footer}>
                     {dishModifiers.length > 0 && (
                       <View style={{ marginBottom: 20 }}>
-                        <Text style={[styles.groupTitle, { marginBottom: 12 }]}>
-                          Add Modifiers
-                        </Text>
+                        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                          <Text style={styles.groupTitle}>
+                            Add Modifiers
+                          </Text>
+                          {groupedModifiers.length === 1 && (
+                            <Text style={styles.modifierGroupLimits}>
+                              {groupedModifiers[0].minSelect > 0 && groupedModifiers[0].maxSelect > 0 && `(Select ${groupedModifiers[0].minSelect} to ${groupedModifiers[0].maxSelect})`}
+                              {groupedModifiers[0].minSelect > 0 && groupedModifiers[0].maxSelect === 0 && `(Select at least ${groupedModifiers[0].minSelect})`}
+                              {groupedModifiers[0].minSelect === 0 && groupedModifiers[0].maxSelect > 0 && `(Select up to ${groupedModifiers[0].maxSelect})`}
+                              {groupedModifiers[0].minSelect === 0 && groupedModifiers[0].maxSelect === 0 && `(Optional)`}
+                            </Text>
+                          )}
+                        </View>
                         
                         {groupedModifiers.map((group) => {
                           const gId = group.groupId;

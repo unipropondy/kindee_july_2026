@@ -410,10 +410,9 @@ router.get("/modifiers/:dishId", async (req, res) => {
         FROM DishModifiersCTE dm
         -- Join with DishGroupModifier to find the group(s) this modifier belongs to
         LEFT JOIN DishGroupModifier dgm ON dm.ModifierID = dgm.ModifierId
-        -- Only keep groups that are mapped to this dish in DishGroupMapping, OR if the dish has NO mappings at all, allow the group if it matches the dish's own DishGroupId
-        -- Fall back to the dish's own DishGroupId if the modifier does not belong to any explicit group in DishGroupModifier
         LEFT JOIN DishGroupMaster dg ON COALESCE(dgm.DishGroupId, (SELECT DishGroupId FROM DishMaster WHERE DishId = dm.DishId)) = dg.DishGroupId AND (
-          dg.DishGroupId IN (SELECT DishGroupId FROM MappedGroups)
+          dgm.DishGroupId IS NULL
+          OR dg.DishGroupId IN (SELECT DishGroupId FROM MappedGroups)
           OR NOT EXISTS (SELECT 1 FROM MappedGroups)
         )
         LEFT JOIN DishModifierGroup dmg ON dmg.DishId = dm.DishId AND dmg.ModifierGroupId = dg.DishGroupId

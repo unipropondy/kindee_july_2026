@@ -1626,7 +1626,14 @@ export default function MenuScreen() {
               <View style={styles.modalHeader}>
                 <View style={{ flex: 1, marginRight: 10 }}>
                   <Text style={[styles.modalTitle, { fontSize: 18 }]} numberOfLines={2}>
-                    Modifiers {selectedDish.Name}
+                    Modifiers {selectedDish.Name} {groupedModifiers.length === 1 && (
+                      <Text style={{ fontSize: 13, fontFamily: Fonts.bold, color: Theme.textSecondary }}>
+                        {groupedModifiers[0].minSelect > 0 && groupedModifiers[0].maxSelect > 0 && ` (Select ${groupedModifiers[0].minSelect} to ${groupedModifiers[0].maxSelect})`}
+                        {groupedModifiers[0].minSelect > 0 && groupedModifiers[0].maxSelect === 0 && ` (Select at least ${groupedModifiers[0].minSelect})`}
+                        {groupedModifiers[0].minSelect === 0 && groupedModifiers[0].maxSelect > 0 && ` (Select up to ${groupedModifiers[0].maxSelect})`}
+                        {groupedModifiers[0].minSelect === 0 && groupedModifiers[0].maxSelect === 0 && ` (Optional)`}
+                      </Text>
+                    )}
                   </Text>
                 </View>
                 <TouchableOpacity

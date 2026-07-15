@@ -987,6 +987,8 @@ export default function SummaryScreen() {
         isCheckout: true,
         serviceCharge: serviceChargeAmount,
         takeawayCharge: currentTakeawayCharge,
+        mobileNo: rewardMember?.Phone || "",
+        memberRewardBalance: String(rewardMember?.RewardCredit || 0),
       };
 
       if (enableCheckoutBill) {

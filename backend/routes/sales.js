@@ -736,6 +736,37 @@ router.get("/detail/:id/payments", async (req, res) => {
 });
 
 
+router.get("/detail/:id/rewards", async (req, res) => {
+  try {
+    const pool = await poolPromise;
+    let cleanId = req.params.id;
+    if (cleanId && cleanId.length > 36) {
+      cleanId = cleanId.substring(0, 36);
+    }
+
+    const rewardRes = await pool.request()
+      .input("Id", sql.UniqueIdentifier, cleanId)
+      .query(`
+        SELECT TOP 1 
+          PointsEarned, 
+          PointsUsed, 
+          MemberId,
+          (SELECT TOP 1 RewardCredit FROM MemberMaster WHERE MemberId = rpd.MemberId) AS RewardCredit
+        FROM RewardPointDetails rpd
+        WHERE SettlementId = @Id
+      `);
+    if (rewardRes.recordset.length > 0) {
+      res.json(rewardRes.recordset[0]);
+    } else {
+      res.json(null);
+    }
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
+
 router.get("/category", async (req, res) => {
   try {
     res.set("Cache-Control", "no-store");

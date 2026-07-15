@@ -1378,6 +1378,7 @@ export default function PaymentScreen() {
             waiterName: context?.serverName ?? "",
             rewardPointsEarned: String(result.rewardPointsEarned || 0),
             memberRewardBalance: String(result.memberRewardBalance || 0),
+            mobileNo: loyaltyPhone || "",
           },
         });
         // Snapshot context/splitItems before the delayed cleanup

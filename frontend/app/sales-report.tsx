@@ -176,6 +176,7 @@ export default function SalesReport() {
   const [selectedOrder, setSelectedOrder] = useState<any>(null);
   const [orderDetails, setOrderDetails] = useState<any[]>([]);
   const [orderPayments, setOrderPayments] = useState<any[]>([]);
+  const [orderRewards, setOrderRewards] = useState<any>(null);
   const [loadingDetails, setLoadingDetails] = useState(false);
   const [showFilterPanel, setShowFilterPanel] = useState(false);
   const [activePaymentModes, setActivePaymentModes] = useState<string[]>([
@@ -1407,9 +1408,11 @@ export default function SalesReport() {
     try {
       setLoadingDetails(true);
       setOrderPayments([]);
-      const [itemsRes, paymentsRes] = await Promise.all([
+      setOrderRewards(null);
+      const [itemsRes, paymentsRes, rewardsRes] = await Promise.all([
         fetch(`${API_URL}/api/sales/detail/${settlementId}`),
         fetch(`${API_URL}/api/sales/detail/${settlementId}/payments`),
+        fetch(`${API_URL}/api/sales/detail/${settlementId}/rewards`),
       ]);
 
       if (itemsRes.ok) {
@@ -1452,6 +1455,13 @@ export default function SalesReport() {
           setOrderPayments(pData);
         }
       }
+
+      if (rewardsRes.ok) {
+        const rData = await rewardsRes.json();
+        if (rData) {
+          setOrderRewards(rData);
+        }
+      }
     } catch (e) {
       console.error("Detail fetch error:", e);
       setOrderDetails([]);
@@ -1464,6 +1474,7 @@ export default function SalesReport() {
   const handleOrderPress = (order: any) => {
     setOrderDetails([]);
     setOrderPayments([]);
+    setOrderRewards(null);
     setSelectedOrder(order);
     fetchOrderDetails(order.SettlementID, order);
   };
@@ -1523,7 +1534,9 @@ export default function SalesReport() {
           payModeName: p.PayModeName,
           amount: p.Amount,
           referenceNo: p.ReferenceNo
-        }))
+        })),
+        rewardPointsEarned: String(orderRewards?.PointsEarned || 0),
+        memberRewardBalance: String(orderRewards?.RewardCredit || 0),
       };
 
       await UniversalPrinter.smartPrint(saleData, userId, {}, discountInfo, undefined, true);

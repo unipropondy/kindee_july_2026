@@ -115,25 +115,28 @@ const TransactionCard = React.memo(
           )}
           <Text style={styles.txSmall} numberOfLines={1}>
             {item.OrderType === "LEDGER"
-              ? `${
-                  modeUpper === "CASH"
-                    ? "💵"
-                    : modeUpper === "MEMBER"
-                    ? "👤"
-                    : modeUpper === "CREDIT"
-                    ? "🏷️"
-                    : isUpi
-                    ? "⚡"
-                    : isYeahpayPaynow
-                    ? "📱"
-                    : isYeahpayCard
-                    ? "💳"
-                    : isPayNow
-                    ? "📱"
-                    : isNets
-                    ? "🔳"
-                    : "💳"
-                } Member Account Settlement`
+              ? (item.CreditOrderNo
+                  ? `Order #${item.CreditOrderNo}`
+                  : `${
+                      modeUpper === "CASH"
+                        ? "💵"
+                        : modeUpper === "MEMBER"
+                        ? "👤"
+                        : modeUpper === "CREDIT"
+                        ? "🏷️"
+                        : isUpi
+                        ? "⚡"
+                        : isYeahpayPaynow
+                        ? "📱"
+                        : isYeahpayCard
+                        ? "💳"
+                        : isPayNow
+                        ? "📱"
+                        : isNets
+                        ? "🔳"
+                        : "💳"
+                    } Member Account Settlement`
+                )
               : `${item.OrderType === "TAKEAWAY" ? "🛍️ Takeaway" : `🪑 Table ${item.TableNo || "N/A"}`} • ${
                   modeUpper === "CASH"
                     ? "Cash"

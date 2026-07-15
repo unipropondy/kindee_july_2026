@@ -26,4 +26,11 @@ body {
   margin: 0;
   padding: 0;
 }
+input:focus,
+textarea:focus,
+input,
+textarea {
+  outline: none !important;
+  box-shadow: none !important;
+}
 `;

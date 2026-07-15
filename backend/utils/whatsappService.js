@@ -85,11 +85,11 @@ async function sendBalanceNotification(memberId, pool) {
 
     let message = "";
     if (availableBalance < 50) {
-      message = `Hi ${Name},\n\nYour available credit is $${formattedAvailable}, which is below the minimum threshold of $50.\n\nPlease top up your account to continue enjoying uninterrupted service.\n\nThank you.`;
+      message = `Hi ${Name},\n\nYour available balance is $${formattedAvailable}, which is below the minimum threshold of $50.\n\nPlease top up your account to continue enjoying uninterrupted service.\n\nThank you.`;
       await sendRaw(Phone, message);
       console.log(`[WHATSAPP] Low balance notification sent to Member ${Name}`);
     } else {
-      message = `Hi ${Name},\n\nYour current available credit is $${formattedAvailable}.\n\nCredit Limit: $${formattedCreditLimit}\nConsumed Amount: $${formattedConsumed}\n\nThank you for being a valued member.`;
+      message = `Hi ${Name},\n\nYour current available balance is $${formattedAvailable}.\n\nPrepaid Amount: $${formattedCreditLimit}\nConsumed Amount: $${formattedConsumed}\n\nThank you for being a valued member.`;
       await sendRaw(Phone, message);
       console.log(`[WHATSAPP] Balance information notification sent to Member ${Name}`);
     }

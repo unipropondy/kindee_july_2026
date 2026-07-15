@@ -1,6 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import React, { useEffect, useState } from "react";
 import {
+  Alert,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -51,6 +52,12 @@ export default function EditDishModal({
     }
   }, [visible, item?.lineItemId]);
 
+  const isDiscountAllowed =
+    item?.IsDiscountAllowed === true ||
+    item?.IsDiscountAllowed === 1 ||
+    Number(item?.IsDiscountAllowed) === 1 ||
+    item?.IsDiscountAllowed === undefined;
+
   const handleApply = () => {
     if (!item) return;
 
@@ -60,9 +67,15 @@ export default function EditDishModal({
     const finalQty = Math.max(1, parseInt(qtyValue) || 1);
     const finalTakeaway = !!isTakeaway;
 
+    if (finalDiscount > 0 && !isDiscountAllowed) {
+      Alert.alert("Discount Blocked", "Discount is not applicable for this dish");
+      return;
+    }
+
     updateCartItemFull(item.lineItemId, {
       note: finalNote,
       discount: finalDiscount,
+      discountAmount: finalDiscount,
       qty: finalQty,
       isTakeaway: finalTakeaway,
     });
@@ -124,14 +137,15 @@ export default function EditDishModal({
               {/* DISCOUNT SECTION */}
               <View style={styles.section}>
                 <Text style={styles.label}>Discount Percentage (%)</Text>
-                <View style={styles.inputWrapper}>
+                <View style={[styles.inputWrapper, !isDiscountAllowed && { backgroundColor: Theme.bgMuted, opacity: 0.6 }]}>
                   <Text style={styles.inputPrefix}>%</Text>
                   <TextInput
+                    editable={isDiscountAllowed}
                     style={styles.input}
                     keyboardType="numeric"
-                    placeholder="0"
+                    placeholder={isDiscountAllowed ? "0" : "Disabled"}
                     placeholderTextColor={Theme.textMuted}
-                    value={discountValue}
+                    value={isDiscountAllowed ? discountValue : "0"}
                     onChangeText={(val) => {
                       // Allow only numbers
                       const numericVal = val.replace(/[^0-9]/g, "");
@@ -147,6 +161,11 @@ export default function EditDishModal({
                     selectTextOnFocus
                   />
                 </View>
+                {!isDiscountAllowed && (
+                  <Text style={{ color: Theme.danger, fontSize: 11, fontFamily: Fonts.bold, marginTop: 2 }}>
+                    Discount is not applicable for this dish
+                  </Text>
+                )}
               </View>
 
               {/* TAKEAWAY SECTION */}

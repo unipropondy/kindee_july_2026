@@ -149,6 +149,7 @@ static async loadSettings(userId?: string | number): Promise<CompanySettings> {
                 printerIp: settings.PrinterIP || '',
                 showCompanyLogo: showCompanyLogo === true,
                 showHalalLogo: showHalalLogo === true,
+                takeawayCharges: parseFloat(settings.TakeawayCharges) || 0,
             };
 
             this.settingsCache[targetId] = {
@@ -176,6 +177,7 @@ static async loadSettings(userId?: string | number): Promise<CompanySettings> {
       cashierName: '',
       currency: 'SGD',
       currencySymbol: '$',
+      takeawayCharges: 0,
     };
   }
   
@@ -373,8 +375,9 @@ private static escapeHtml(str: string): string {
       serviceChargeAmount = scEligibleNet * (scPercentage / 100);
     }
 
-    const takeawayRate = parseFloat(String((company as any).TakeawayCharges ?? company.takeawayCharges ?? 0)) || 0;
-    const takeawayQty = (saleData.items || []).reduce((sum: number, item: any) => {
+    const takeawayRateFromSettings = parseFloat(String((company as any).TakeawayCharges ?? company.takeawayCharges ?? 0)) || 0;
+    let takeawayCharge = saleData.takeawayCharge !== undefined ? parseFloat(String(saleData.takeawayCharge)) : 0;
+    let takeawayQty = (saleData.items || []).reduce((sum: number, item: any) => {
       const isTW = item.isTakeaway || item.IsTakeaway || item.isTakeAway || item.IsTakeAway;
       const isVoided = item.status === 'VOIDED' || item.StatusCode === 0;
       if (isTW && !isVoided) {
@@ -383,7 +386,13 @@ private static escapeHtml(str: string): string {
       return sum;
     }, 0);
 
-    const takeawayCharge = takeawayQty * takeawayRate;
+    if (takeawayQty === 0 && takeawayCharge > 0) {
+      const effectiveRate = takeawayRateFromSettings > 0 ? takeawayRateFromSettings : takeawayCharge;
+      takeawayQty = Math.round(takeawayCharge / effectiveRate) || 1;
+    } else if (takeawayQty > 0 && takeawayCharge === 0) {
+      takeawayCharge = takeawayQty * takeawayRateFromSettings;
+    }
+    const takeawayRate = takeawayQty > 0 ? (takeawayCharge / takeawayQty) : takeawayRateFromSettings;
     const taxableAmount = currentSubtotal + serviceChargeAmount + takeawayCharge;
     const hasSC = serviceChargeAmount > 0;
     const effectiveSCPercentage = serviceChargeAmount > 0 && currentSubtotal > 0
@@ -763,8 +772,14 @@ private static escapeHtml(str: string): string {
             
             ${company.cashierName ? `
             <div class="detail-row">
-              <span class="detail-label">CASHIER:</span>
-              <span class="detail-value">${company.cashierName}</span>
+               <span class="detail-label">CASHIER:</span>
+               <span class="detail-value">${company.cashierName}</span>
+            </div>
+            ` : ''}
+            ${saleData.mobileNo ? `
+            <div class="detail-row">
+               <span class="detail-label">MEMBER PHONE:</span>
+               <span class="detail-value">${saleData.mobileNo}</span>
             </div>
             ` : ''}
           </div>
@@ -874,6 +889,20 @@ private static escapeHtml(str: string): string {
                 ` : ''}
               `}
             `}
+            
+            <!-- 🏆 Print Reward point transaction stats on PDF Invoice -->
+            ${parseFloat(saleData.rewardPointsEarned) > 0 ? `
+              <div class="payment-row" style="font-size: 10px; font-weight: 700; display: flex; justify-content: space-between; background: #FFF7ED; padding: 1.5mm; border-radius: 4px; margin-top: 1.5mm;">
+                <span style="color: #F97316;">POINTS EARNED:</span>
+                <span style="color: #F97316;">+$${parseFloat(saleData.rewardPointsEarned).toFixed(2)}</span>
+              </div>
+            ` : ''}
+            ${parseFloat(saleData.memberRewardBalance) > 0 ? `
+              <div class="payment-row" style="font-size: 10px; font-weight: 700; display: flex; justify-content: space-between; padding: 1.5mm 0;">
+                <span>AVAILABLE MEMBER CREDIT:</span>
+                <span style="color: green;">$${parseFloat(saleData.memberRewardBalance).toFixed(2)}</span>
+              </div>
+            ` : ''}
           </div>
           
           <!-- Footer -->

@@ -277,6 +277,7 @@ router.get("/all", async (req, res) => {
              ISNULL(ri.DiscountPercentage, 0) as DiscountPercentage,
              ISNULL(cct_sale.OutstandingAmount, 0) AS OutstandingAmount,
              COALESCE(mm.Name, ccm.Name, mm_sale.Name, ccm_sale.Name) AS CustomerName,
+             NULL AS CreditOrderNo,
              sh.GuestName as GuestName,
              sh.Pax as Pax
            FROM SettlementHeader sh
@@ -325,6 +326,7 @@ router.get("/all", async (req, res) => {
             0 AS DiscountPercentage,
             0 AS OutstandingAmount,
             COALESCE(mm.Name, m.Name) AS CustomerName,
+             (SELECT TOP 1 tx.BillNo FROM CustomerCreditAllocations cca JOIN CustomerCreditTransactions tx ON cca.InvoiceTransactionId = tx.TransactionId WHERE cca.PaymentTransactionId = cct.TransactionId) AS CreditOrderNo,
             NULL AS GuestName,
             NULL AS Pax
           FROM CustomerCreditTransactions cct
@@ -370,6 +372,7 @@ router.get("/all", async (req, res) => {
              ISNULL(ri.DiscountPercentage, 0) as DiscountPercentage,
              ISNULL(cct_sale.OutstandingAmount, 0) AS OutstandingAmount,
              COALESCE(mm.Name, ccm.Name, mm_sale.Name, ccm_sale.Name) AS CustomerName,
+             NULL AS CreditOrderNo,
              sh.GuestName as GuestName,
              sh.Pax as Pax
            FROM SettlementHeader sh
@@ -416,6 +419,7 @@ router.get("/all", async (req, res) => {
             0 AS DiscountPercentage,
             0 AS OutstandingAmount,
             COALESCE(mm.Name, m.Name) AS CustomerName,
+             (SELECT TOP 1 tx.BillNo FROM CustomerCreditAllocations cca JOIN CustomerCreditTransactions tx ON cca.InvoiceTransactionId = tx.TransactionId WHERE cca.PaymentTransactionId = cct.TransactionId) AS CreditOrderNo,
             NULL AS GuestName,
             NULL AS Pax
           FROM CustomerCreditTransactions cct
@@ -1393,7 +1397,8 @@ router.post("/save", async (req, res) => {
       totalAmount, paymentMethod, items, subTotal, taxAmount,
       discountAmount, discountType, roundOff, orderId, orderType, tableNo, section, memberId, cashierId, tableId,
       serverId, serverName, isSplit,
-      discountId, discountPercentage, discountRemarks, orderDiscountAmount, itemDiscountAmount, payments
+      discountId, discountPercentage, discountRemarks, orderDiscountAmount, itemDiscountAmount, payments,
+      rewardMemberId
     } = req.body;
 
     const validationError = validateSalePayload({ totalAmount, paymentMethod, items, payments });
@@ -1538,12 +1543,19 @@ router.post("/save", async (req, res) => {
     displayOrderId = null;
     let dailySequence = 0;
 
+    let tablePax = null;
+    let tableCustomerName = null;
+    let orderPax = null;
+    let orderCustomerName = null;
+
     const cleanTableId = toGuidOrNull(tableId);
     if (cleanTableId) {
         const tableCheck = await transaction.request()
             .input("tid", sql.UniqueIdentifier, cleanTableId)
-            .query("SELECT CurrentOrderId FROM TableMaster WITH (UPDLOCK) WHERE TableId = @tid");
+            .query("SELECT CurrentOrderId, Pax, CustomerName FROM TableMaster WITH (UPDLOCK) WHERE TableId = @tid");
         displayOrderId = tableCheck.recordset[0]?.CurrentOrderId;
+        tablePax = tableCheck.recordset[0]?.Pax;
+        tableCustomerName = tableCheck.recordset[0]?.CustomerName;
         
         if (displayOrderId && displayOrderId.includes('-')) {
             dailySequence = parseInt(displayOrderId.split('-')[1]) || 0;
@@ -1597,12 +1609,14 @@ router.post("/save", async (req, res) => {
         voidAmount = voidRes.recordset[0]?.VAmt || 0;
         console.log(`[SAVE SALE] Voids captured from DB: Qty=${voidQty}, Amt=${voidAmount}`);
 
-        // 🚀 SYNC SYIELD: Fetch Master GUID OrderId for Relation Integrity
+        // 🚀 SYNC SYIELD: Fetch Master GUID OrderId, Pax, and CustomerName for Relation Integrity
         const guidRes = await transaction.request()
             .input("orderNo", sql.NVarChar(100), displayOrderId)
-            .query("SELECT TOP 1 OrderId FROM RestaurantOrderCur WITH (UPDLOCK) WHERE OrderNumber = @orderNo");
-        const guidOrderId = guidRes.recordset[0]?.OrderId || settlementId; 
-        console.log(`[SAVE SALE] Master Sync -> GUID OrderId: ${guidOrderId} (Source: ${guidRes.recordset[0]?.OrderId ? 'Current' : 'Fallback-Settlement'})`);
+            .query("SELECT TOP 1 OrderId, Pax, CustomerName FROM RestaurantOrderCur WITH (UPDLOCK) WHERE OrderNumber = @orderNo");
+        const guidOrderId = guidRes.recordset[0]?.OrderId || settlementId;
+        orderPax = guidRes.recordset[0]?.Pax;
+        orderCustomerName = guidRes.recordset[0]?.CustomerName;
+        console.log(`[SAVE SALE] Master Sync -> GUID OrderId: ${guidOrderId}, orderPax: ${orderPax}, orderCustomerName: ${orderCustomerName}`);
 
     // Split Bill unique bill/invoice suffix generator
     finalBillNo = displayOrderId;
@@ -1663,8 +1677,8 @@ router.post("/save", async (req, res) => {
       .input("TotalLineItemDiscountAmount", sql.Decimal(18, 2), itemDiscountAmount || 0)
       .input("MergeCount", sql.Numeric, mergeCount)
       .input("SplitCount", sql.Numeric, splitIndexValue)
-      .input("GuestName", sql.NVarChar(9), req.body.customerName ? req.body.customerName.trim().substring(0, 9) : null)
-      .input("Pax", sql.Int, req.body.pax ? parseInt(req.body.pax) : null)
+      .input("GuestName", sql.NVarChar(9), req.body.customerName ? req.body.customerName.trim().substring(0, 9) : (orderCustomerName || tableCustomerName || null))
+      .input("Pax", sql.Int, req.body.pax ? parseInt(req.body.pax) : (orderPax || tablePax || null))
       .input("startDate", sql.Date, formattedStartDate)
       .query(`
         -- 1. Insert into SettlementHeader
@@ -1672,12 +1686,12 @@ router.post("/save", async (req, res) => {
           SettlementID, LastSettlementDate, LastDayEndDate, SubTotal, TotalTax, DiscountAmount, DiscountType, 
           BillNo, OrderType, TableNo, Section, MemberId, CashierID, BusinessUnitId, 
           SysAmount, ManualAmount, CreatedBy, CreatedOn, SER_NAME, MobileNo, 
-          VoidItemQty, VoidItemAmount, RoundedBy, ServiceCharge, GuestName, Pax, TakeawayCharge, start_date
+          VoidItemQty, VoidItemAmount, RoundedBy, ServiceCharge, GuestName, Pax, TotalPax, TakeawayCharge, start_date
         ) VALUES (
           @SettlementID, GETDATE(), GETDATE(), @SubTotal, @TotalTax, @DiscountAmount, @DiscountType, 
           @BillNo, @OrderType, @TableNo, @Section, @MemberId, @CashierID, @BusinessUnitId, 
           @SysAmount, @ManualAmount, @CreatedBy, GETDATE(), @SER_NAME, @MobileNo, 
-          @VoidItemQty, @VoidItemAmount, @RoundedBy, @ServiceCharge, @GuestName, @Pax, @TakeawayCharge, @startDate
+          @VoidItemQty, @VoidItemAmount, @RoundedBy, @ServiceCharge, @GuestName, @Pax, @Pax, @TakeawayCharge, @startDate
         );
 
         -- 2. Insert into RestaurantInvoice (Perfect Sync)
@@ -2439,7 +2453,98 @@ router.post("/save", async (req, res) => {
       console.log(`[Loyalty Debug] Loyalty phone was empty or missing. Skipping trigger.`);
     }
 
-    res.json({ success: true, settlementId, billNo: finalBillNo || displayOrderId, orderId: displayOrderId });
+     // 🏆 POST-SAVE REWARD POINTS TRIGGER
+     // Award/Deduct reward credit when a reward member is linked and payment is NOT by member credit
+     let rewardPointsEarned = 0;
+     let memberRewardBalance = 0;
+ 
+     if (rewardMemberId && totalAmount > 0) {
+       try {
+         const rewardPool = await poolPromise;
+ 
+         // 1. Determine if a reward discount was redeemed in this sale
+         const discountRemarksVal = req.body.discountRemarks || "";
+         const isRewardRedemption = discountRemarksVal.startsWith("Reward:");
+         const redeemedAmount = isRewardRedemption ? parseFloat(req.body.orderDiscountAmount) || 0 : 0;
+ 
+         // 2. Fetch current RewardCredit for the member before modifications
+         const memberRes = await rewardPool.request()
+           .input("MemberId", sql.UniqueIdentifier, toGuidOrNull(rewardMemberId))
+           .query(`SELECT ISNULL(RewardCredit, 0) AS RewardCredit FROM MemberMaster WHERE MemberId = @MemberId`);
+ 
+         let currentCredit = 0;
+         if (memberRes.recordset.length > 0) {
+           currentCredit = parseFloat(memberRes.recordset[0].RewardCredit) || 0;
+         }
+ 
+         // 3. Calculate new balance: subtract redeemed, add earned
+         // Fetch active reward rule to calculate earning
+         const ruleRes = await rewardPool.request().query(
+           `SELECT TOP 1 SpendAmount, CreditAmount FROM RewardMaster WHERE IsActive = 1 ORDER BY Id DESC`
+         );
+         if (ruleRes.recordset.length > 0) {
+           const rule = ruleRes.recordset[0];
+           const earned = (totalAmount / rule.SpendAmount) * rule.CreditAmount;
+           rewardPointsEarned = Math.round(earned * 10000) / 10000; // 4dp precision
+         }
+ 
+         const deductAmount = Math.min(redeemedAmount, currentCredit);
+         const newCredit = Math.max(0, currentCredit - deductAmount + rewardPointsEarned);
+ 
+         // 4. Update RewardCredit in MemberMaster
+         await rewardPool.request()
+           .input("NewCredit", sql.Decimal(18, 4), newCredit)
+           .input("MemberId", sql.UniqueIdentifier, toGuidOrNull(rewardMemberId))
+           .query(`UPDATE MemberMaster SET RewardCredit = @NewCredit, ModifiedDate = GETDATE() WHERE MemberId = @MemberId`);
+ 
+         // 5. Log the redemption to RewardPointDetails (if applicable)
+         if (deductAmount > 0) {
+           await rewardPool.request()
+             .input("MemberId", sql.UniqueIdentifier, toGuidOrNull(rewardMemberId))
+             .input("SettlementId", sql.UniqueIdentifier, toGuidOrNull(settlementId))
+             .input("BillNo", sql.NVarChar(50), finalBillNo || displayOrderId)
+             .input("BillAmount", sql.Decimal(18, 2), totalAmount)
+             .input("PointsUsed", sql.Decimal(18, 4), deductAmount)
+             .input("PayMode", sql.NVarChar(50), paymentMethod || "CASH")
+             .input("Remarks", sql.NVarChar(255), `Redeemed as discount on bill ${finalBillNo || displayOrderId}`)
+             .query(`
+               INSERT INTO RewardPointDetails (MemberId, SettlementId, BillNo, BillAmount, PointsEarned, PointsUsed, TransType, PayMode, Remarks)
+               VALUES (@MemberId, @SettlementId, @BillNo, @BillAmount, 0, @PointsUsed, 'REDEEM', @PayMode, @Remarks)
+             `);
+         }
+ 
+         // 6. Log the earning to RewardPointDetails (if applicable)
+         if (rewardPointsEarned > 0) {
+           await rewardPool.request()
+             .input("MemberId", sql.UniqueIdentifier, toGuidOrNull(rewardMemberId))
+             .input("SettlementId", sql.UniqueIdentifier, toGuidOrNull(settlementId))
+             .input("BillNo", sql.NVarChar(50), finalBillNo || displayOrderId)
+             .input("BillAmount", sql.Decimal(18, 2), totalAmount)
+             .input("PointsEarned", sql.Decimal(18, 4), rewardPointsEarned)
+             .input("PayMode", sql.NVarChar(50), paymentMethod || "CASH")
+             .input("Remarks", sql.NVarChar(255), `Earned on bill ${finalBillNo || displayOrderId}`)
+             .query(`
+               INSERT INTO RewardPointDetails (MemberId, SettlementId, BillNo, BillAmount, PointsEarned, PointsUsed, TransType, PayMode, Remarks)
+               VALUES (@MemberId, @SettlementId, @BillNo, @BillAmount, @PointsEarned, 0, 'EARN', @PayMode, @Remarks)
+             `);
+         }
+ 
+         memberRewardBalance = newCredit;
+         console.log(`[Rewards] ✅ Processed member ${rewardMemberId}. Redeemed: ${deductAmount}, Earned: ${rewardPointsEarned}. New balance: ${memberRewardBalance}`);
+       } catch (rewardErr) {
+         // Non-blocking — don't fail the sale
+         console.error(`[Rewards] ❌ Atomic process failed (non-blocking):`, rewardErr.message);
+       }
+     }
+
+    res.json({
+      success: true,
+      settlementId,
+      billNo: finalBillNo || displayOrderId,
+      orderId: displayOrderId,
+      rewardPointsEarned,
+      memberRewardBalance
+    });
   } catch (err) {
     console.error("SAVE SALE ERROR:", err);
     res.status(500).json({ success: false, error: err.message });

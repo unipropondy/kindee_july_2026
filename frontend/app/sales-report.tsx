@@ -911,6 +911,9 @@ export default function SalesReport() {
 
   const formatOrderId = (order: any) => {
     if (!order) return "";
+    if (order.OrderType === "LEDGER" && order.CreditOrderNo) {
+      return order.CreditOrderNo;
+    }
     const rawId = String(order.OrderId || order.BillNo || "");
     // If the ID already has a dash or contains alphabetical/special characters (like ORD270524), return it as-is
     if (rawId.includes("-") || !/^\d+$/.test(rawId)) return rawId;
@@ -1102,7 +1105,7 @@ export default function SalesReport() {
   const filteredMetrics = useMemo(() => {
     return dateScopedSales.reduce(
       (acc, s) => {
-        const isSubsequentSplit = s.SettlementID && s.SettlementID.includes("-") && s.SettlementID.split("-").pop().match(/^\d+$/);
+        const isSubsequentSplit = s.SettlementID && s.SettlementID.includes("-") && s.SettlementID.split("-").length > 5 && s.SettlementID.split("-").pop().match(/^\d+$/);
 
         if (s.IsCancelled) {
           if (!isSubsequentSplit) {
@@ -1400,7 +1403,7 @@ export default function SalesReport() {
     return (selectedOrder?.PayMode || "CASH").toUpperCase();
   }, [displayedPayments, selectedOrder]);
 
-  const fetchOrderDetails = async (settlementId: string) => {
+  const fetchOrderDetails = async (settlementId: string, currentOrder: any) => {
     try {
       setLoadingDetails(true);
       setOrderPayments([]);
@@ -1433,11 +1436,11 @@ export default function SalesReport() {
         } else {
           setOrderDetails([
             {
-              DishName: selectedOrder?.IsCancelled
+              DishName: currentOrder?.IsCancelled
                 ? "Items not captured (Legacy Cancelled Order)"
-                : (selectedOrder?.OrderType === 'LEDGER' ? "Member Outstanding Payment" : "Item info not available"),
-              Qty: selectedOrder?.OrderType === 'LEDGER' ? 1 : 0,
-              Price: selectedOrder?.OrderType === 'LEDGER' ? selectedOrder?.SysAmount : 0
+                : (currentOrder?.OrderType === 'LEDGER' ? (currentOrder?.OrderId || "Member Outstanding Payment") : "Item info not available"),
+              Qty: currentOrder?.OrderType === 'LEDGER' ? 1 : 0,
+              Price: currentOrder?.OrderType === 'LEDGER' ? currentOrder?.SysAmount : 0
             },
           ]);
         }
@@ -1462,7 +1465,7 @@ export default function SalesReport() {
     setOrderDetails([]);
     setOrderPayments([]);
     setSelectedOrder(order);
-    fetchOrderDetails(order.SettlementID);
+    fetchOrderDetails(order.SettlementID, order);
   };
 
   const handleReprint = async () => {

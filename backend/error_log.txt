@@ -225,3 +225,14 @@
     at readableAddChunkPushObjectMode (node:internal/streams/readable:536:3)
     at Readable.push (node:internal/streams/readable:391:5)
     at nextAsync (node:internal/streams/from:194:22)
+2026-07-11T05:37:26.466Z RequestError: read ECONNRESET
+    at C:\Users\UNIPRO\Desktop\RESTAURANT\backend\node_modules\mssql\lib\tedious\request.js:449:19
+    at Array.forEach (<anonymous>)
+    at Request.userCallback (C:\Users\UNIPRO\Desktop\RESTAURANT\backend\node_modules\mssql\lib\tedious\request.js:446:46)
+    at Request.callback (C:\Users\UNIPRO\Desktop\RESTAURANT\backend\node_modules\tedious\lib\request.js:239:14)
+    at Connection.socketError (C:\Users\UNIPRO\Desktop\RESTAURANT\backend\node_modules\tedious\lib\connection.js:2677:20)
+    at Connection.dispatchEvent (C:\Users\UNIPRO\Desktop\RESTAURANT\backend\node_modules\tedious\lib\connection.js:1374:15)
+    at Connection._onSocketError (C:\Users\UNIPRO\Desktop\RESTAURANT\backend\node_modules\tedious\lib\connection.js:861:12)
+    at Socket.emit (node:events:531:35)
+    at emitErrorNT (node:internal/streams/destroy:170:8)
+    at emitErrorCloseNT (node:internal/streams/destroy:129:3)

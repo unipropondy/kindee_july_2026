@@ -72,37 +72,13 @@ const CancelOrderModal = ({
           <Text style={styles.modalTitle}>Cancel Order?</Text>
           <Text style={styles.modalDesc}>Select a reason or enter custom one.</Text>
 
-          {!loadingReasons && (
-            <View style={styles.quickReasonsContainer}>
-              {QUICK_REASONS.map((r) => (
-                <TouchableOpacity
-                  key={r}
-                  style={[
-                    styles.quickReasonChip,
-                    selectedReason === r && styles.quickReasonChipSelected,
-                  ]}
-                  onPress={() => handleReasonSelect(r)}
-                >
-                  <Text
-                    style={[
-                      styles.quickReasonText,
-                      selectedReason === r && styles.quickReasonTextSelected,
-                    ]}
-                  >
-                    {r}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          )}
-
           {loadingReasons ? (
             <View style={{ paddingVertical: 40, alignItems: "center" }}>
               <ActivityIndicator size="large" color={Theme.primary} />
             </View>
           ) : (
             <ScrollView
-              style={{ maxHeight: 300 }}
+              style={{ maxHeight: 350 }}
               showsVerticalScrollIndicator={false}
               keyboardShouldPersistTaps="handled"
             >
@@ -123,81 +99,45 @@ const CancelOrderModal = ({
                   />
                 </View>
               )}
-              {cancelReasons.map((reason) => (
-                <TouchableOpacity
-                  key={reason.CRCode}
-                  style={[
-                    styles.reasonRow,
-                    selectedReason === reason.CRName && styles.reasonRowSelected,
-                  ]}
-                  onPress={() => {
-                    setSelectedReason(reason.CRName);
-                    setCustomReason("");
-                  }}
-                >
-                  <View
+
+              <View style={[styles.quickReasonsContainer, { marginBottom: 16 }]}>
+                {(cancelReasons && cancelReasons.length > 0 ? cancelReasons.map((r: any) => r.CRName) : QUICK_REASONS).map((r) => (
+                  <TouchableOpacity
+                    key={r}
                     style={[
-                      styles.reasonRadio,
-                      selectedReason === reason.CRName && { borderColor: Theme.primary },
+                      styles.quickReasonChip,
+                      selectedReason === r && styles.quickReasonChipSelected,
                     ]}
+                    onPress={() => handleReasonSelect(r)}
                   >
-                    {selectedReason === reason.CRName && (
-                      <View
-                        style={[
-                          styles.reasonRadioSelected,
-                          { backgroundColor: Theme.primary },
-                        ]}
-                      />
-                    )}
-                  </View>
+                    <Text
+                      style={[
+                        styles.quickReasonText,
+                        selectedReason === r && styles.quickReasonTextSelected,
+                      ]}
+                    >
+                      {r}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+                
+                <TouchableOpacity
+                  style={[
+                    styles.quickReasonChip,
+                    selectedReason === "OTHER" && styles.quickReasonChipSelected,
+                  ]}
+                  onPress={() => handleReasonSelect("OTHER")}
+                >
                   <Text
                     style={[
-                      styles.reasonName,
-                      selectedReason === reason.CRName && {
-                        color: Theme.primary,
-                        fontFamily: Fonts.bold,
-                      },
+                      styles.quickReasonText,
+                      selectedReason === "OTHER" && styles.quickReasonTextSelected,
                     ]}
                   >
-                    {reason.CRName}
+                    Other (Custom)
                   </Text>
                 </TouchableOpacity>
-              ))}
-
-              <TouchableOpacity
-                style={[
-                  styles.reasonRow,
-                  selectedReason === "OTHER" && styles.reasonRowSelected,
-                ]}
-                onPress={() => setSelectedReason("OTHER")}
-              >
-                <View
-                  style={[
-                    styles.reasonRadio,
-                    selectedReason === "OTHER" && { borderColor: Theme.primary },
-                  ]}
-                >
-                  {selectedReason === "OTHER" && (
-                    <View
-                      style={[
-                        styles.reasonRadioSelected,
-                        { backgroundColor: Theme.primary },
-                      ]}
-                    />
-                  )}
-                </View>
-                <Text
-                  style={[
-                    styles.reasonName,
-                    selectedReason === "OTHER" && {
-                      color: Theme.primary,
-                      fontFamily: Fonts.bold,
-                    },
-                  ]}
-                >
-                  Other (Custom)
-                </Text>
-              </TouchableOpacity>
+              </View>
 
               {selectedReason === "OTHER" && (
                 <TextInput

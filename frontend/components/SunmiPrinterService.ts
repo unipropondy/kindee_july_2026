@@ -554,8 +554,9 @@ class SunmiPrinterService {
       }
       const hasSC = serviceChargeAmount > 0;
       const companySettingsStore = useCompanySettingsStore.getState().settings;
-      const takeawayRate = companySettingsStore?.takeawayCharges || 0;
-      const takeawayQty = (saleData.items || []).reduce((sum: number, item: any) => {
+      const takeawayRateFromSettings = companySettingsStore?.takeawayCharges || 0;
+      let takeawayCharge = saleData.takeawayCharge !== undefined ? parseFloat(String(saleData.takeawayCharge)) : 0;
+      let takeawayQty = (saleData.items || []).reduce((sum: number, item: any) => {
         const isTW = item.isTakeaway || item.IsTakeaway || item.isTakeAway || item.IsTakeAway;
         const isVoided = item.status === "VOIDED" || item.StatusCode === 0;
         if (isTW && !isVoided) {
@@ -563,7 +564,14 @@ class SunmiPrinterService {
         }
         return sum;
       }, 0);
-      const takeawayCharge = takeawayQty * takeawayRate;
+
+      if (takeawayQty === 0 && takeawayCharge > 0) {
+        const effectiveRate = takeawayRateFromSettings > 0 ? takeawayRateFromSettings : takeawayCharge;
+        takeawayQty = Math.round(takeawayCharge / effectiveRate) || 1;
+      } else if (takeawayQty > 0 && takeawayCharge === 0) {
+        takeawayCharge = takeawayQty * takeawayRateFromSettings;
+      }
+      const takeawayRate = takeawayQty > 0 ? (takeawayCharge / takeawayQty) : takeawayRateFromSettings;
       
       const taxableAmount = currentSubtotal + serviceChargeAmount + takeawayCharge;
       const gstAmountRaw = gstRate > 0 ? taxableAmount * (gstRate / 100) : 0;
@@ -618,6 +626,18 @@ class SunmiPrinterService {
           if (saleData.change && saleData.change > 0) {
             await SunmiModule.printText(formatter.twoCols("CHANGE:", `${symbol}${saleData.change.toFixed(2)}`));
           }
+        }
+      }
+
+      // 🏆 Print member reward stats on Sunmi Receipt
+      if (saleData.mobileNo) {
+        await SunmiModule.printText(formatter.divider("-"));
+        await SunmiModule.printText(formatter.twoCols("Member Phone:", String(saleData.mobileNo)));
+        if (parseFloat(saleData.rewardPointsEarned) > 0) {
+          await SunmiModule.printText(formatter.twoCols("Points Earned:", `+$${parseFloat(saleData.rewardPointsEarned).toFixed(2)}`));
+        }
+        if (parseFloat(saleData.memberRewardBalance) > 0) {
+          await SunmiModule.printText(formatter.twoCols("Avail Member Credit:", `$${parseFloat(saleData.memberRewardBalance).toFixed(2)}`));
         }
       }
 

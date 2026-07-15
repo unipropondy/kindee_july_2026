@@ -243,7 +243,7 @@ const normalizeCartItem = (item: any, fallback: Partial<CartItem> = {}): CartIte
     isCombo: getNormalizedBoolean(item.isCombo, item.IsCombo, item.ComboDetailsJSON, fallback.isCombo),
     comboSelections: incomingComboSelections || _comboGroups || fallback.comboSelections || undefined,
     IsDiscountAllowed: item.IsDiscountAllowed !== undefined ? item.IsDiscountAllowed : (fallback.IsDiscountAllowed !== undefined ? fallback.IsDiscountAllowed : 1),
-    discountAmount: Number(item.discountAmount ?? item.discount ?? item.DiscountAmount ?? fallback.discountAmount ?? discount),
+    discountAmount: Number(item.discount ?? item.discountAmount ?? item.DiscountAmount ?? fallback.discountAmount ?? discount),
     discountType: item.discountType || item.DiscountType || fallback.discountType || "percentage",
   };
 };
@@ -338,6 +338,7 @@ type CartState = {
       discountAmount?: number;
       discountType?: string;
       isVoided?: boolean;
+      isTakeaway?: boolean;
     },
   ) => void;
   applyBulkItemDiscount: (value: number, type: "percentage" | "fixed") => void;
@@ -1387,6 +1388,12 @@ export const useCartStore = create<CartState>()(
                   discount: isRecentlyEdited 
                     ? (localMatch.discount ?? dbItem.discount) 
                     : (dbItem.discount ?? localMatch.discount ?? 0),
+                  discountAmount: isRecentlyEdited 
+                    ? (localMatch.discountAmount ?? dbItem.discountAmount ?? localMatch.discount) 
+                    : (dbItem.discountAmount ?? localMatch.discountAmount ?? dbItem.discount ?? 0),
+                  discountType: isRecentlyEdited 
+                    ? (localMatch.discountType ?? dbItem.discountType) 
+                    : (dbItem.discountType ?? localMatch.discountType ?? "percentage"),
                   modifiers: localMatch.modifiers,
                   status: finalStatus,
                   sent: finalSent

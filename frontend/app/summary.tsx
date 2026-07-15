@@ -95,6 +95,7 @@ export default function SummaryScreen() {
   const activeOrder = context ? findActiveOrder(context) : undefined;
 
   const [showDiscount, setShowDiscount] = useState(false);
+  const [showDiscountTypeModal, setShowDiscountTypeModal] = useState(false);
   const [showGstModal, setShowGstModal] = useState(false);
   const [showItemDiscount, setShowItemDiscount] = useState(false);
   const [showCancelModal, setShowCancelModal] = useState(false);
@@ -156,6 +157,13 @@ export default function SummaryScreen() {
   const [loyaltySearchText, setLoyaltySearchText] = useState("");
   const [activeLoyaltyTab, setActiveLoyaltyTab] = useState<"search" | "register">("search");
   const [isRegisteringLoyalty, setIsRegisteringLoyalty] = useState(false);
+  
+  // 🏆 REWARD POINTS STATES
+  const [rewardMember, setRewardMember] = useState<any | null>(null);
+  const [showRewardModal, setShowRewardModal] = useState(false);
+  const [rewardSearchText, setRewardSearchText] = useState("");
+  const [rewardSearchResults, setRewardSearchResults] = useState<any[]>([]);
+  const [isSearchingRewards, setIsSearchingRewards] = useState(false);
 
   const tableState = context?.tableId
     ? useTableStatusStore.getState().tableMap[context.tableId.toLowerCase()]
@@ -235,6 +243,33 @@ export default function SummaryScreen() {
       console.error("Loyalty search error:", err);
     }
   };
+
+  // 🏆 REWARD POINTS MEMBER LOOKUP
+  const handleRewardSearch = async (text: string) => {
+    setRewardSearchText(text);
+    const clean = text.trim();
+    setIsSearchingRewards(true);
+    try {
+      const token = useAuthStore.getState().token;
+      const res = await fetch(`${API_URL}/api/rewards/members/search?q=${encodeURIComponent(clean)}`, {
+        headers: token ? { "Authorization": `Bearer ${token}` } : {}
+      });
+      const data = await res.json();
+      if (Array.isArray(data)) {
+        setRewardSearchResults(data);
+      }
+    } catch (err) {
+      console.error("Reward member search error:", err);
+    } finally {
+      setIsSearchingRewards(false);
+    }
+  };
+
+  useEffect(() => {
+    if (showRewardModal) {
+      handleRewardSearch("");
+    }
+  }, [showRewardModal]);
 
   const handleSearchTextChange = async (text: string) => {
     setLoyaltySearchText(text);
@@ -377,6 +412,9 @@ export default function SummaryScreen() {
 
   const enableKOT = useGeneralSettingsStore((s: any) => s.settings.enableKOT);
   const enableCheckoutBill = useGeneralSettingsStore((s: any) => s.settings.enableCheckoutBill);
+  const showLoyalty = useGeneralSettingsStore((s: any) => s.settings.showLoyalty !== false);
+  const showRewardPoints = useGeneralSettingsStore((s: any) => s.settings.showRewardPoints !== false);
+  const showPromoCode = useGeneralSettingsStore((s: any) => s.settings.showPromoCode !== false);
 
   const currentContextId = useCartStore((s: any) => s.currentContextId);
   const cart = useCartStore((s: any) => (currentContextId ? s.carts[currentContextId] : undefined) || EMPTY_ARRAY);
@@ -1274,6 +1312,174 @@ export default function SummaryScreen() {
     );
   }
 
+  const headerActions = (
+    <>
+      {showLoyalty && (
+        <TouchableOpacity
+          style={[
+            styles.actionBtn,
+            {
+              backgroundColor: Theme.successBg || "#dcfce7",
+              borderColor: Theme.successBorder || "#bbf7d0",
+              borderWidth: 1,
+            },
+            !isTablet &&
+              isLandscape && { height: 32, paddingHorizontal: 8 },
+          ]}
+          onPress={() => setShowLoyaltyModal(true)}
+        >
+          <Ionicons
+            name="ribbon-outline"
+            size={!isTablet && isLandscape ? 16 : 18}
+            color={Theme.success || "#16a34a"}
+          />
+          {isLandscape && (
+            <Text
+              style={[
+                styles.actionBtnText,
+                { color: Theme.success || "#16a34a" },
+                !isTablet && isLandscape && { fontSize: 10 },
+              ]}
+            >
+              Loyalty
+            </Text>
+          )}
+        </TouchableOpacity>
+      )}
+
+      <TouchableOpacity
+        style={[
+          styles.actionBtn,
+          {
+            backgroundColor: Theme.primaryLight,
+            borderColor: Theme.primaryBorder,
+            borderWidth: 1,
+          },
+          !isTablet &&
+            isLandscape && { height: 32, paddingHorizontal: 8 },
+        ]}
+        onPress={() => setShowDiscountTypeModal(true)}
+      >
+        <Ionicons
+          name="pricetag-outline"
+          size={!isTablet && isLandscape ? 16 : 18}
+          color={Theme.primary}
+        />
+        {isLandscape && (
+          <Text
+            style={[
+              styles.actionBtnText,
+              { color: Theme.primary },
+              !isTablet && isLandscape && { fontSize: 10 },
+            ]}
+          >
+            Discount
+          </Text>
+        )}
+      </TouchableOpacity>
+
+      {showRewardPoints && (
+        <TouchableOpacity
+          style={[
+            styles.actionBtn,
+            {
+              backgroundColor: "#FFFBEB",
+              borderColor: "#FEF3C7",
+              borderWidth: 1,
+            },
+            !isTablet &&
+              isLandscape && { height: 32, paddingHorizontal: 8 },
+          ]}
+          onPress={() => setShowRewardModal(true)}
+        >
+          <Ionicons
+            name="star-outline"
+            size={!isTablet && isLandscape ? 16 : 18}
+            color="#D97706"
+          />
+          {isLandscape && (
+            <Text
+              style={[
+                styles.actionBtnText,
+                { color: "#D97706" },
+                !isTablet && isLandscape && { fontSize: 10 },
+              ]}
+            >
+              Reward Points
+            </Text>
+          )}
+        </TouchableOpacity>
+      )}
+
+      {showPromoCode && (
+        <TouchableOpacity
+          style={[
+            styles.actionBtn,
+            {
+              backgroundColor: "#F5F3FF",
+              borderColor: "#DDD6FE",
+              borderWidth: 1,
+            },
+            !isTablet &&
+              isLandscape && { height: 32, paddingHorizontal: 8 },
+          ]}
+          onPress={() => setShowPromoModal(true)}
+        >
+          <Ionicons
+            name="barcode-outline"
+            size={!isTablet && isLandscape ? 16 : 18}
+            color="#7C3AED"
+          />
+          {isLandscape && (
+            <Text
+              style={[
+                styles.actionBtnText,
+                { color: "#7C3AED" },
+                !isTablet && isLandscape && { fontSize: 10 },
+              ]}
+            >
+              Promo Code
+            </Text>
+          )}
+        </TouchableOpacity>
+      )}
+
+      <TouchableOpacity
+        style={[
+          styles.actionBtn,
+          {
+            backgroundColor: Theme.dangerBg,
+            borderColor: Theme.dangerBorder,
+            borderWidth: 1,
+          },
+          !isTablet &&
+            isLandscape && { height: 32, paddingHorizontal: 8 },
+        ]}
+        onPress={() => {
+          fetchCancelReasons();
+          setShowCancelModal(true);
+        }}
+      >
+        <Ionicons
+          name="close-circle-outline"
+          size={!isTablet && isLandscape ? 16 : 18}
+          color={Theme.danger}
+        />
+        {isLandscape && (
+          <Text
+            style={[
+              styles.actionBtnText,
+              { color: Theme.danger },
+              !isTablet && isLandscape && { fontSize: 10 },
+            ]}
+          >
+            Cancel
+          </Text>
+        )}
+      </TouchableOpacity>
+    </>
+  );
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <StatusBar barStyle="dark-content" backgroundColor={Theme.bgNav} />
@@ -1283,26 +1489,45 @@ export default function SummaryScreen() {
           style={[
             styles.headerBar,
             isPhone && isLandscape && { height: 50, marginBottom: 5 },
+            isPhone && !isLandscape && {
+              flexDirection: "column",
+              alignItems: "stretch",
+              minHeight: undefined,
+              gap: 8,
+              paddingBottom: 10,
+            },
           ]}
         >
-          <View style={styles.headerLeft}>
-            <Pressable
-              style={styles.iconBtn}
-              onPress={() =>
-                router.canGoBack()
-                  ? router.back()
-                  : router.replace("/(tabs)/category")
-              }
-            >
-              <Ionicons name="arrow-back" size={24} color={Theme.textPrimary} />
-            </Pressable>
+          {isPhone && !isLandscape ? (
+            // MOBILE PORTRAIT LAYOUT
+            <>
+              {/* Row 1: Back Button + Title + Actions */}
+              <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", width: "100%" }}>
+                <View style={{ flexDirection: "row", alignItems: "center" }}>
+                  <Pressable
+                    style={styles.iconBtn}
+                    onPress={() =>
+                      router.canGoBack()
+                        ? router.back()
+                        : router.replace("/(tabs)/category")
+                    }
+                  >
+                    <Ionicons name="arrow-back" size={24} color={Theme.textPrimary} />
+                  </Pressable>
+                  <Text style={styles.title}>Summary</Text>
+                </View>
 
-            <View style={styles.headerTitleContainer}>
-              <Text style={styles.title}>Summary</Text>
+                {/* Actions Row */}
+                <View style={[styles.headerRight, { gap: 6 }]}>
+                  {headerActions}
+                </View>
+              </View>
+
+              {/* Row 2: Badges + Order ID */}
               <View
                 style={[
                   styles.orderBadgeRow,
-                  { flexWrap: "wrap", marginTop: 0 },
+                  { marginTop: 4, paddingLeft: 59, flexWrap: "wrap" },
                 ]}
               >
                 <View
@@ -1338,179 +1563,84 @@ export default function SummaryScreen() {
                     </Text>
                   </View>
                 )}
-                <Text
-                  style={[
-                    styles.orderSub,
-                    { marginLeft: isPhone && !isLandscape ? 0 : 8 },
-                  ]}
-                >
+                <Text style={[styles.orderSub, { marginLeft: 8 }]}>
                   #{displayOrderId || "NEW"}
                 </Text>
               </View>
-            </View>
-          </View>
-
-          <View style={styles.headerRight}>
-            <TouchableOpacity
-              style={[
-                styles.actionBtn,
-                {
-                  backgroundColor: Theme.successBg || "#dcfce7",
-                  borderColor: Theme.successBorder || "#bbf7d0",
-                  borderWidth: 1,
-                },
-                !isTablet &&
-                  isLandscape && { height: 32, paddingHorizontal: 8 },
-              ]}
-              onPress={() => setShowLoyaltyModal(true)}
-            >
-              <Ionicons
-                name="ribbon-outline"
-                size={!isTablet && isLandscape ? 16 : 18}
-                color={Theme.success || "#16a34a"}
-              />
-              {isLandscape && (
-                <Text
-                  style={[
-                    styles.actionBtnText,
-                    { color: Theme.success || "#16a34a" },
-                    !isTablet && isLandscape && { fontSize: 10 },
-                  ]}
+            </>
+          ) : (
+            // TABLET / LANDSCAPE LAYOUT
+            <>
+              <View style={styles.headerLeft}>
+                <Pressable
+                  style={styles.iconBtn}
+                  onPress={() =>
+                    router.canGoBack()
+                      ? router.back()
+                      : router.replace("/(tabs)/category")
+                  }
                 >
-                  Loyalty
-                </Text>
-              )}
-            </TouchableOpacity>
+                  <Ionicons name="arrow-back" size={24} color={Theme.textPrimary} />
+                </Pressable>
 
-            <TouchableOpacity
-              style={[
-                styles.actionBtn,
-                {
-                  backgroundColor: Theme.primaryLight,
-                  borderColor: Theme.primaryBorder,
-                  borderWidth: 1,
-                },
-                !isTablet &&
-                  isLandscape && { height: 32, paddingHorizontal: 8 },
-              ]}
-              onPress={() => setShowDiscount(true)}
-            >
-              <Ionicons
-                name="pricetag-outline"
-                size={!isTablet && isLandscape ? 16 : 18}
-                color={Theme.primary}
-              />
-              {isLandscape && (
-                <Text
-                  style={[
-                    styles.actionBtnText,
-                    { color: Theme.primary },
-                    !isTablet && isLandscape && { fontSize: 10 },
-                  ]}
-                >
-                  Discount
-                </Text>
-              )}
-            </TouchableOpacity>
+                <View style={styles.headerTitleContainer}>
+                  <Text style={styles.title}>Summary</Text>
+                  <View
+                    style={[
+                      styles.orderBadgeRow,
+                      { flexWrap: "wrap", marginTop: 0 },
+                    ]}
+                  >
+                    <View
+                      style={[
+                        styles.typeBadge,
+                        {
+                          backgroundColor:
+                            context.orderType === "DINE_IN"
+                              ? Theme.primaryLight
+                              : Theme.warningBg,
+                        },
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.typeBadgeText,
+                          {
+                            color:
+                              context.orderType === "DINE_IN"
+                                ? Theme.primary
+                                : Theme.warning,
+                          },
+                        ]}
+                      >
+                        {context.orderType === "DINE_IN" ? "DINE-IN" : "TAKEAWAY"}
+                      </Text>
+                    </View>
+                    {context.orderType === "DINE_IN" && (
+                      <View style={styles.tableBadge}>
+                        <Text style={styles.tableBadgeText}>
+                          {formatSection(context.section || "")} • T
+                          {context.tableNo}
+                        </Text>
+                      </View>
+                    )}
+                    <Text
+                      style={[
+                        styles.orderSub,
+                        { marginLeft: 8 },
+                      ]}
+                    >
+                      #{displayOrderId || "NEW"}
+                    </Text>
+                  </View>
+                </View>
+              </View>
 
-            <TouchableOpacity
-              style={[
-                styles.actionBtn,
-                {
-                  backgroundColor: Theme.primaryLight,
-                  borderColor: Theme.primaryBorder,
-                  borderWidth: 1,
-                },
-                !isTablet &&
-                  isLandscape && { height: 32, paddingHorizontal: 8 },
-              ]}
-              onPress={() => {
-                setShowItemDiscount(true);
-              }}
-            >
-              <Ionicons
-                name="pricetag"
-                size={!isTablet && isLandscape ? 16 : 18}
-                color={Theme.primary}
-              />
-              {isLandscape && (
-                <Text
-                  style={[
-                    styles.actionBtnText,
-                    { color: Theme.primary },
-                    !isTablet && isLandscape && { fontSize: 10 },
-                  ]}
-                >
-                  Item Discount
-                </Text>
-              )}
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[
-                styles.actionBtn,
-                {
-                  backgroundColor: "#F5F3FF",
-                  borderColor: "#DDD6FE",
-                  borderWidth: 1,
-                },
-                !isTablet &&
-                  isLandscape && { height: 32, paddingHorizontal: 8 },
-              ]}
-              onPress={() => setShowPromoModal(true)}
-            >
-              <Ionicons
-                name="barcode-outline"
-                size={!isTablet && isLandscape ? 16 : 18}
-                color="#7C3AED"
-              />
-              {isLandscape && (
-                <Text
-                  style={[
-                    styles.actionBtnText,
-                    { color: "#7C3AED" },
-                    !isTablet && isLandscape && { fontSize: 10 },
-                  ]}
-                >
-                  Promo Code
-                </Text>
-              )}
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[
-                styles.actionBtn,
-                {
-                  backgroundColor: Theme.dangerBg,
-                  borderColor: Theme.dangerBorder,
-                  borderWidth: 1,
-                },
-                !isTablet &&
-                  isLandscape && { height: 32, paddingHorizontal: 8 },
-              ]}
-              onPress={() => {
-                fetchCancelReasons();
-                setShowCancelModal(true);
-              }}
-            >
-              <Ionicons
-                name="close-circle-outline"
-                size={!isTablet && isLandscape ? 16 : 18}
-                color={Theme.danger}
-              />
-              {isLandscape && (
-                <Text
-                  style={[
-                    styles.actionBtnText,
-                    { color: Theme.danger },
-                    !isTablet && isLandscape && { fontSize: 10 },
-                  ]}
-                >
-                  Cancel
-                </Text>
-              )}
-            </TouchableOpacity>
-          </View>
+              <View style={styles.headerRight}>
+                {headerActions}
+              </View>
+            </>
+          )}
         </View>
 
         {/* MAIN CONTENT AREA */}
@@ -1795,6 +1925,113 @@ export default function SummaryScreen() {
                     )}
                   </View>
                 )}
+
+                {/* 🏆 REWARD POINTS MEMBER DISPLAY */}
+                {rewardMember && (() => {
+                  const symbol = settings?.currencySymbol || "$";
+                  const rewardCreditVal = parseFloat(rewardMember.RewardCredit) || 0;
+                  return (
+                    <View
+                      style={{
+                        backgroundColor: "#FFF7ED",
+                        borderColor: "#F97316",
+                        borderWidth: 1,
+                        borderRadius: 10,
+                        padding: 12,
+                        marginBottom: 12,
+                        gap: 4
+                      }}
+                    >
+                      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                          <Ionicons name="gift" size={16} color="#F97316" />
+                          <Text style={{ fontSize: 13, fontFamily: Fonts.black, color: Theme.textPrimary }}>
+                            Reward Member: {rewardMember.Name}
+                          </Text>
+                        </View>
+                        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                          <TouchableOpacity
+                            onPress={() => setShowRewardModal(true)}
+                            style={{ paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6, backgroundColor: "#FFEDD5" }}
+                          >
+                            <Text style={{ fontSize: 11, fontFamily: Fonts.bold, color: "#F97316" }}>Change</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            onPress={() => {
+                              // If the current discount was applied as a reward discount, clear it too
+                              if (discountInfo?.applied && discountInfo?.label?.startsWith("Reward:")) {
+                                const cleared = { applied: false, type: "fixed" as const, value: 0, label: "" };
+                                applyDiscount(cleared);
+                                const ctx = getOrderContext();
+                                if (ctx) updateOrderDiscount(ctx, cleared);
+                              }
+                              setRewardMember(null);
+                            }}
+                            style={{ paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6, backgroundColor: "#FEE2E2" }}
+                          >
+                            <Text style={{ fontSize: 11, fontFamily: Fonts.bold, color: "#DC2626" }}>Remove</Text>
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+
+                      <Text style={{ fontSize: 12, fontFamily: Fonts.bold, color: Theme.textSecondary, marginLeft: 22 }}>
+                        Phone: {rewardMember.Phone}
+                      </Text>
+
+                      <Text style={{ fontSize: 12, fontFamily: Fonts.bold, color: "#D97706", marginLeft: 22 }}>
+                        Reward Balance: {currencySymbol}{rewardCreditVal.toFixed(2)}
+                      </Text>
+
+                      {rewardCreditVal > 0 && (
+                        <TouchableOpacity
+                          style={{
+                            marginTop: 8,
+                            marginLeft: 22,
+                            backgroundColor: "#FFFBEB",
+                            borderColor: "#FDE68A",
+                            borderWidth: 1,
+                            borderRadius: 8,
+                            paddingVertical: 6,
+                            paddingHorizontal: 12,
+                            alignSelf: "flex-start",
+                            flexDirection: "row",
+                            alignItems: "center",
+                            gap: 6
+                          }}
+                          onPress={() => {
+                            const discountData = {
+                              applied: true,
+                              type: "fixed" as const,
+                              value: rewardCreditVal,
+                              label: `Reward: ${rewardMember.Name}`,
+                            };
+                            applyDiscount(discountData);
+                            const currentContext = getOrderContext();
+                            if (currentContext) {
+                              updateOrderDiscount(currentContext, discountData);
+                            }
+
+                            // Update local rewardMember state to reflect zero credit immediately in UI
+                            setRewardMember((prev: any) =>
+                              prev ? { ...prev, RewardCredit: 0 } : prev
+                            );
+
+                            showToast({
+                              type: "success",
+                              message: "Reward Applied",
+                              subtitle: `Redeemed ${currencySymbol}${rewardCreditVal.toFixed(2)} reward credit as discount`
+                            });
+                          }}
+                        >
+                          <Ionicons name="pricetag" size={14} color="#D97706" />
+                          <Text style={{ fontFamily: Fonts.bold, fontSize: 12, color: "#D97706" }}>
+                            Redeem Reward Discount
+                          </Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  );
+                })()}
 
                 <View
                   style={[
@@ -2230,6 +2467,7 @@ export default function SummaryScreen() {
                       params: {
                         mobileNo: loyaltyPhone ? `${selectedCountry.code} ${loyaltyPhone.trim()}` : "",
                         customerName: loyaltyName || "",
+                        rewardMemberId: rewardMember?.MemberId || "",
                       },
                     });
                   }}
@@ -2252,6 +2490,184 @@ export default function SummaryScreen() {
           </View>
         </View>
       </View>
+
+      {/* DISCOUNT TYPE SELECTION MODAL */}
+      <Modal
+        visible={showDiscountTypeModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowDiscountTypeModal(false)}
+      >
+        <TouchableOpacity
+          style={{
+            flex: 1,
+            backgroundColor: "rgba(15, 23, 42, 0.4)",
+            justifyContent: "center",
+            alignItems: "center",
+            padding: 16,
+          }}
+          activeOpacity={1}
+          onPress={() => setShowDiscountTypeModal(false)}
+        >
+          <View
+            style={[
+              {
+                backgroundColor: Theme.bgCard,
+                padding: 24,
+                borderRadius: 20,
+                width: "90%",
+                maxWidth: 400,
+                alignItems: "stretch",
+                borderWidth: 1,
+                borderColor: Theme.border,
+                ...Theme.shadowLg,
+              },
+            ]}
+          >
+            {/* Header */}
+            <View
+              style={{
+                flexDirection: "row",
+                justifyContent: "space-between",
+                alignItems: "center",
+                marginBottom: 20,
+              }}
+            >
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                <View
+                  style={{
+                    backgroundColor: Theme.primaryLight,
+                    padding: 8,
+                    borderRadius: 10,
+                  }}
+                >
+                  <Ionicons name="pricetags" size={18} color={Theme.primary} />
+                </View>
+                <Text
+                  style={{
+                    fontFamily: Fonts.bold,
+                    fontSize: 18,
+                    color: Theme.textPrimary,
+                  }}
+                >
+                  Select Discount Type
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => setShowDiscountTypeModal(false)}
+                style={{ padding: 4 }}
+              >
+                <Ionicons name="close" size={20} color={Theme.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            {/* Options */}
+            <View style={{ gap: 12 }}>
+              {/* Option 1: Order Discount */}
+              <TouchableOpacity
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  padding: 16,
+                  backgroundColor: Theme.bgMuted || "#F8FAFC",
+                  borderRadius: 14,
+                  borderWidth: 1,
+                  borderColor: Theme.border,
+                  gap: 12,
+                }}
+                activeOpacity={0.7}
+                onPress={() => {
+                  setShowDiscountTypeModal(false);
+                  setShowDiscount(true);
+                }}
+              >
+                <View
+                  style={{
+                    backgroundColor: "#EFF6FF",
+                    padding: 10,
+                    borderRadius: 10,
+                  }}
+                >
+                  <Ionicons name="receipt-outline" size={22} color="#3B82F6" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text
+                    style={{
+                      fontFamily: Fonts.bold,
+                      fontSize: 15,
+                      color: Theme.textPrimary,
+                    }}
+                  >
+                    Order Discount
+                  </Text>
+                  <Text
+                    style={{
+                      fontFamily: Fonts.regular,
+                      fontSize: 12,
+                      color: Theme.textSecondary,
+                      marginTop: 2,
+                    }}
+                  >
+                    Apply discount to the entire bill
+                  </Text>
+                </View>
+                <Ionicons name="chevron-forward" size={18} color={Theme.textMuted} />
+              </TouchableOpacity>
+
+              {/* Option 2: Item Discount */}
+              <TouchableOpacity
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  padding: 16,
+                  backgroundColor: Theme.bgMuted || "#F8FAFC",
+                  borderRadius: 14,
+                  borderWidth: 1,
+                  borderColor: Theme.border,
+                  gap: 12,
+                }}
+                activeOpacity={0.7}
+                onPress={() => {
+                  setShowDiscountTypeModal(false);
+                  setShowItemDiscount(true);
+                }}
+              >
+                <View
+                  style={{
+                    backgroundColor: "#FDF2F8",
+                    padding: 10,
+                    borderRadius: 10,
+                  }}
+                >
+                  <Ionicons name="pricetag-outline" size={22} color="#EC4899" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text
+                    style={{
+                      fontFamily: Fonts.bold,
+                      fontSize: 15,
+                      color: Theme.textPrimary,
+                    }}
+                  >
+                    Item Discount
+                  </Text>
+                  <Text
+                    style={{
+                      fontFamily: Fonts.regular,
+                      fontSize: 12,
+                      color: Theme.textSecondary,
+                      marginTop: 2,
+                    }}
+                  >
+                    Apply discount to specific menu items
+                  </Text>
+                </View>
+                <Ionicons name="chevron-forward" size={18} color={Theme.textMuted} />
+              </TouchableOpacity>
+            </View>
+          </View>
+        </TouchableOpacity>
+      </Modal>
 
       <DiscountModal
         visible={showDiscount}
@@ -2480,6 +2896,147 @@ export default function SummaryScreen() {
           setShowServerModal(false);
         }}
       />
+
+      {/* 🏆 REWARD POINTS MEMBER LOOKUP MODAL */}
+      <Modal
+        visible={showRewardModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowRewardModal(false)}
+      >
+        <TouchableWithoutFeedback onPress={() => setShowRewardModal(false)}>
+          <View style={styles.modalOverlay}>
+            <TouchableWithoutFeedback>
+              <View style={[styles.modalContent, { maxWidth: 450, maxHeight: "85%" }]}>
+                <View style={styles.modalHeader}>
+                  <Text style={styles.modalTitle}>Reward Member Lookup</Text>
+                  <TouchableOpacity onPress={() => setShowRewardModal(false)}>
+                    <Ionicons name="close" size={24} color={Theme.textPrimary} />
+                  </TouchableOpacity>
+                </View>
+
+                <Text style={styles.modalDesc}>
+                  Link a member number or name to award reward wallet points.
+                </Text>
+
+                <TextInput
+                  style={[
+                    styles.searchInput,
+                    {
+                      width: "100%",
+                      marginTop: 5,
+                      marginBottom: 15,
+                      backgroundColor: Theme.bgInput,
+                      borderWidth: 1,
+                      borderColor: Theme.border,
+                      borderRadius: 12,
+                      padding: 12,
+                      fontFamily: Fonts.medium,
+                      fontSize: 16,
+                      color: Theme.textPrimary,
+                    },
+                  ]}
+                  placeholder="Enter phone or customer name..."
+                  placeholderTextColor={Theme.textMuted}
+                  value={rewardSearchText}
+                  onChangeText={handleRewardSearch}
+                />
+
+                {isSearchingRewards ? (
+                  <ActivityIndicator size="small" color={Theme.primary} style={{ marginVertical: 20 }} />
+                ) : (
+                  <ScrollView style={{ maxHeight: 220, marginBottom: 20 }} showsVerticalScrollIndicator={true}>
+                    {rewardSearchResults.length === 0 ? (
+                      <Text style={{ textAlign: "center", color: Theme.textMuted, marginVertical: 15, fontFamily: Fonts.regular }}>
+                        {rewardSearchText ? "No matching members found" : "Type to search members"}
+                      </Text>
+                    ) : (
+                      rewardSearchResults.map((item) => (
+                        <TouchableOpacity
+                          key={item.MemberId}
+                          style={{
+                            flexDirection: "row",
+                            justifyContent: "space-between",
+                            alignItems: "center",
+                            padding: 12,
+                            borderRadius: 12,
+                            backgroundColor: Theme.bgMuted,
+                            marginBottom: 8,
+                            borderWidth: 1,
+                            borderColor: Theme.border,
+                          }}
+                          onPress={() => {
+                            setRewardMember(item);
+                            setShowRewardModal(false);
+                            setRewardSearchText("");
+                            setRewardSearchResults([]);
+                          }}
+                        >
+                          <View style={{ flex: 1, marginRight: 10 }}>
+                            <Text style={{ fontFamily: Fonts.bold, fontSize: 15, color: Theme.textPrimary }}>
+                              {item.Name}
+                            </Text>
+                            <Text style={{ fontFamily: Fonts.medium, fontSize: 12, color: Theme.textSecondary, marginTop: 2 }}>
+                              Phone: {item.Phone}
+                            </Text>
+                          </View>
+                          <View style={{ alignItems: "flex-end" }}>
+                            <Text style={{ fontFamily: Fonts.black, fontSize: 14, color: "#D97706" }}>
+                              {currencySymbol}{(parseFloat(item.RewardCredit) || 0).toFixed(2)} Rewards
+                            </Text>
+                            <Text style={{ fontFamily: Fonts.medium, fontSize: 11, color: Theme.textSecondary, marginTop: 2 }}>
+                              Credit: {currencySymbol}{(parseFloat(item.AvailableCredit) || 0).toFixed(2)}
+                            </Text>
+                          </View>
+                        </TouchableOpacity>
+                      ))
+                    )}
+                  </ScrollView>
+                )}
+
+                {rewardMember && (
+                  <TouchableOpacity
+                    style={{
+                      backgroundColor: Theme.dangerBg,
+                      padding: 12,
+                      borderRadius: 12,
+                      alignItems: "center",
+                      marginBottom: 15,
+                      borderWidth: 1,
+                      borderColor: Theme.dangerBorder
+                    }}
+                    onPress={() => {
+                      setRewardMember(null);
+                      setShowRewardModal(false);
+                    }}
+                  >
+                    <Text style={{ fontFamily: Fonts.bold, color: Theme.danger, fontSize: 14 }}>
+                      Unlink Current Member ({rewardMember.Name})
+                    </Text>
+                  </TouchableOpacity>
+                )}
+
+                <View style={{ flexDirection: "row", gap: 12, width: "100%" }}>
+                  <TouchableOpacity
+                    style={[
+                      styles.mergeConfirmBtn,
+                      styles.mergeConfirmBtnCancel,
+                      { paddingVertical: 12, flex: 1 },
+                    ]}
+                    onPress={() => {
+                      setShowRewardModal(false);
+                      setRewardSearchText("");
+                      setRewardSearchResults([]);
+                    }}
+                  >
+                    <Text style={styles.mergeConfirmBtnCancelText}>Close</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </TouchableWithoutFeedback>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
 
       {/* BILL OPTIONS MODAL */}
       <Modal transparent visible={showBillOptions} animationType="fade">

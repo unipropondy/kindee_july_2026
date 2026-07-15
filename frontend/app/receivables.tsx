@@ -39,6 +39,10 @@ type CustomerAgingType = {
   Bucket61to90: number;
   Bucket90Plus: number;
   CustomerType: "MEMBER" | "CREDIT";
+  CreditLimit?: number;
+  Email?: string;
+  Address?: string;
+  IsActive?: boolean;
 };
 
 type CreditTransactionType = {
@@ -101,7 +105,7 @@ export default function ReceivablesScreen() {
   const router = useRouter();
   const { user, token } = useAuthStore();
   const isFocused = useIsFocused();
-  const settingsStore = useCompanySettingsStore((state) => state.settings);
+  const settingsStore = useCompanySettingsStore((state: any) => state.settings);
   const currencySymbol = settingsStore?.currencySymbol || "$";
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const isMobile = screenWidth < 768;
@@ -218,10 +222,10 @@ export default function ReceivablesScreen() {
     setFormData({
       name: cust.Name,
       phone: cust.Phone,
-      email: "",
-      address: "", 
-      isActive: true,
-      creditLimit: "1000", // Preloaded default credit limit, user will adjust
+      email: cust.Email || "",
+      address: cust.Address || "", 
+      isActive: cust.IsActive !== false,
+      creditLimit: cust.CreditLimit !== undefined ? String(cust.CreditLimit) : "1000",
       currentBalance: "0",
       balance: "0",
     });
@@ -841,6 +845,11 @@ export default function ReceivablesScreen() {
                       <View style={{ flex: 1 }}>
                         <Text style={styles.customerName}>{item.Name}</Text>
                         <Text style={styles.customerPhone}>{item.Phone}</Text>
+                        {item.CreditLimit !== undefined && (
+                          <Text style={{ color: Theme.textSecondary, fontSize: 12, fontFamily: Fonts.bold, marginTop: 2 }}>
+                            Credit Limit: {currencySymbol}{Number(item.CreditLimit).toFixed(2)}
+                          </Text>
+                        )}
                       </View>
                       <View style={{ alignItems: "flex-end" }}>
                         <Text style={styles.outstandingLabel}>OUTSTANDING</Text>
@@ -920,6 +929,11 @@ export default function ReceivablesScreen() {
                       <View>
                         <Text style={styles.customerName}>{item.Name}</Text>
                         <Text style={styles.customerPhone}>{item.Phone}</Text>
+                        {item.CreditLimit !== undefined && (
+                          <Text style={{ color: Theme.textSecondary, fontSize: 12, fontFamily: Fonts.bold, marginTop: 2 }}>
+                            Credit Limit: {currencySymbol}{Number(item.CreditLimit).toFixed(2)}
+                          </Text>
+                        )}
                       </View>
                       <View style={{ alignItems: "flex-end" }}>
                         <Text style={styles.outstandingLabel}>TOTAL</Text>
@@ -1049,6 +1063,7 @@ export default function ReceivablesScreen() {
                   <Text style={styles.sheetTitle}>Account Ledger</Text>
                   <Text style={styles.sheetSubtitle}>
                     {selectedCustomer?.Name} • {selectedCustomer?.Phone}
+                    {selectedCustomer?.CreditLimit !== undefined && ` • Credit Limit: ${currencySymbol}${Number(selectedCustomer.CreditLimit).toFixed(2)}`}
                   </Text>
                 </View>
                 <TouchableOpacity
@@ -1303,62 +1318,60 @@ export default function ReceivablesScreen() {
                   <Ionicons name="close" size={24} color={Theme.textPrimary} />
                 </TouchableOpacity>
               </View>
-              <ScrollView style={{ padding: 20 }} showsVerticalScrollIndicator={false}>
-                {modalMode !== "EDIT" && (
-                  <>
-                    <View style={styles.inputGroup}>
-                      <Text style={styles.inputLabel}>NAME</Text>
-                      <TextInput style={styles.sheetInput} value={formData.name} onChangeText={v => setFormData({ ...formData, name: v })} placeholder="Full Name" placeholderTextColor={Theme.textMuted} />
+              <ScrollView style={{ paddingHorizontal: 24, paddingVertical: 16 }} showsVerticalScrollIndicator={false}>
+                <>
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.inputLabel}>NAME</Text>
+                    <TextInput style={styles.sheetInput} value={formData.name} onChangeText={v => setFormData({ ...formData, name: v })} placeholder="Full Name" placeholderTextColor={Theme.textMuted} />
+                  </View>
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.inputLabel}>PHONE</Text>
+                    <View style={{ flexDirection: "row", gap: 10 }}>
+                      <TouchableOpacity
+                        style={styles.countrySelector}
+                        onPress={() => setShowCountryPicker(true)}
+                      >
+                        <Text style={styles.countrySelectorText}>
+                          {selectedCountryCode}
+                        </Text>
+                        <Ionicons name="chevron-down" size={12} color={Theme.textSecondary} />
+                      </TouchableOpacity>
+                      <TextInput
+                        style={[styles.sheetInput, { flex: 1 }]}
+                        keyboardType="phone-pad"
+                        value={localPhone}
+                        onChangeText={v => setLocalPhone(v.replace(/[^0-9]/g, ""))}
+                        placeholder="Contact Number"
+                        placeholderTextColor={Theme.textMuted}
+                      />
                     </View>
-                    <View style={styles.inputGroup}>
-                      <Text style={styles.inputLabel}>PHONE</Text>
-                      <View style={{ flexDirection: "row", gap: 10 }}>
-                        <TouchableOpacity
-                          style={styles.countrySelector}
-                          onPress={() => setShowCountryPicker(true)}
-                        >
-                          <Text style={styles.countrySelectorText}>
-                            {selectedCountryCode}
-                          </Text>
-                          <Ionicons name="chevron-down" size={12} color={Theme.textSecondary} />
-                        </TouchableOpacity>
-                        <TextInput
-                          style={[styles.sheetInput, { flex: 1 }]}
-                          keyboardType="phone-pad"
-                          value={localPhone}
-                          onChangeText={v => setLocalPhone(v.replace(/[^0-9]/g, ""))}
-                          placeholder="Contact Number"
-                          placeholderTextColor={Theme.textMuted}
-                        />
-                      </View>
+                  </View>
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.inputLabel}>EMAIL</Text>
+                    <TextInput style={styles.sheetInput} keyboardType="email-address" value={formData.email} onChangeText={v => setFormData({ ...formData, email: v })} placeholder="Email Address" placeholderTextColor={Theme.textMuted} />
+                  </View>
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.inputLabel}>ADDRESS</Text>
+                    <TextInput style={[styles.sheetInput, { height: 80, textAlignVertical: 'top', paddingTop: 12 }]} multiline value={formData.address} onChangeText={v => setFormData({ ...formData, address: v })} placeholder="Address" placeholderTextColor={Theme.textMuted} />
+                  </View>
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.inputLabel}>STATUS</Text>
+                    <View style={{ flexDirection: 'row', gap: 10 }}>
+                      <TouchableOpacity 
+                        style={[styles.statusToggle, formData.isActive && styles.activeToggle]} 
+                        onPress={() => setFormData({ ...formData, isActive: true })}
+                      >
+                        <Text style={[styles.statusText, formData.isActive && styles.activeStatusText]}>Active</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity 
+                        style={[styles.statusToggle, !formData.isActive && styles.inactiveToggle]} 
+                        onPress={() => setFormData({ ...formData, isActive: false })}
+                      >
+                        <Text style={[styles.statusText, !formData.isActive && styles.inactiveStatusText]}>Inactive</Text>
+                      </TouchableOpacity>
                     </View>
-                    <View style={styles.inputGroup}>
-                      <Text style={styles.inputLabel}>EMAIL</Text>
-                      <TextInput style={styles.sheetInput} keyboardType="email-address" value={formData.email} onChangeText={v => setFormData({ ...formData, email: v })} placeholder="Email Address" placeholderTextColor={Theme.textMuted} />
-                    </View>
-                    <View style={styles.inputGroup}>
-                      <Text style={styles.inputLabel}>ADDRESS</Text>
-                      <TextInput style={[styles.sheetInput, { height: 80, textAlignVertical: 'top', paddingTop: 12 }]} multiline value={formData.address} onChangeText={v => setFormData({ ...formData, address: v })} placeholder="Address" placeholderTextColor={Theme.textMuted} />
-                    </View>
-                    <View style={styles.inputGroup}>
-                      <Text style={styles.inputLabel}>STATUS</Text>
-                      <View style={{ flexDirection: 'row', gap: 10 }}>
-                        <TouchableOpacity 
-                          style={[styles.statusToggle, formData.isActive && styles.activeToggle]} 
-                          onPress={() => setFormData({ ...formData, isActive: true })}
-                        >
-                          <Text style={[styles.statusText, formData.isActive && styles.activeStatusText]}>Active</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity 
-                          style={[styles.statusToggle, !formData.isActive && styles.inactiveToggle]} 
-                          onPress={() => setFormData({ ...formData, isActive: false })}
-                        >
-                          <Text style={[styles.statusText, !formData.isActive && styles.inactiveStatusText]}>Inactive</Text>
-                        </TouchableOpacity>
-                      </View>
-                    </View>
-                  </>
-                )}
+                  </View>
+                </>
 
                 <View style={{ flexDirection: 'row', gap: 10 }}>
                   <View style={{ flex: 1 }}>
@@ -1378,9 +1391,9 @@ export default function ReceivablesScreen() {
                   onPress={handleSaveCustomer} 
                   disabled={isSaving}
                 >
-                  {isSaving ? <ActivityIndicator color="#fff" /> : <Text style={styles.submitBtnText}>{modalMode === "EDIT" ? "Update Credit Limit" : "Add Customer"}</Text>}
+                  {isSaving ? <ActivityIndicator color="#fff" /> : <Text style={styles.submitBtnText}>{modalMode === "EDIT" ? "Update Customer" : "Add Customer"}</Text>}
                 </TouchableOpacity>
-                <View style={{ height: 40 }} />
+                <View style={{ height: 16 }} />
               </ScrollView>
             </View>
           </View>
@@ -1705,7 +1718,7 @@ const styles = StyleSheet.create({
   emptyText: { fontFamily: Fonts.medium, fontSize: 14, color: Theme.textMuted, marginTop: 10 },
 
   // New CRUD modals styling
-  formSheet: { backgroundColor: Theme.bgCard, borderRadius: 24, width: '100%', maxWidth: 500, padding: 24, ...Theme.shadowLg },
+  formSheet: { backgroundColor: Theme.bgCard, borderRadius: 24, width: '100%', maxWidth: 500, maxHeight: '90%', flexShrink: 1, overflow: 'hidden', ...Theme.shadowLg },
   countrySelector: { width: 70, height: 50, borderRadius: 10, backgroundColor: Theme.bgInput, borderWidth: 1, borderColor: Theme.border, flexDirection: "row", justifyContent: "center", alignItems: "center", gap: 4 },
   countrySelectorText: { fontSize: 14, fontFamily: Fonts.bold, color: Theme.textPrimary },
   statusToggle: { flex: 1, height: 50, borderRadius: 12, backgroundColor: Theme.bgInput, borderWidth: 1, borderColor: Theme.border, justifyContent: "center", alignItems: "center" },

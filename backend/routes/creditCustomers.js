@@ -574,7 +574,7 @@ router.get("/receivables/aging", async (req, res) => {
     
     const query = `
       WITH Customers AS (
-        SELECT CustomerId AS MemberId, Name, Phone, IsActive, 'CREDIT' AS CustomerType FROM CreditCustomerMaster
+        SELECT CustomerId AS MemberId, Name, Phone, IsActive, CreditLimit, Email, Address, 'CREDIT' AS CustomerType FROM CreditCustomerMaster
       ),
       BillBalances AS (
         SELECT 
@@ -592,6 +592,10 @@ router.get("/receivables/aging", async (req, res) => {
         m.Name,
         m.Phone,
         m.CustomerType,
+        m.CreditLimit,
+        m.Email,
+        m.Address,
+        m.IsActive,
         ISNULL(SUM(b.NetOutstanding), 0) AS OutstandingBalance,
         ISNULL(SUM(CASE WHEN b.AgeDays <= 30 THEN b.NetOutstanding ELSE 0 END), 0) AS Bucket0to30,
         ISNULL(SUM(CASE WHEN b.AgeDays > 30 AND b.AgeDays <= 60 THEN b.NetOutstanding ELSE 0 END), 0) AS Bucket31to60,
@@ -600,7 +604,7 @@ router.get("/receivables/aging", async (req, res) => {
       FROM Customers m
       LEFT JOIN BillBalances b ON m.MemberId = b.MemberId
       WHERE m.IsActive = 1
-      GROUP BY m.MemberId, m.Name, m.Phone, m.CustomerType
+      GROUP BY m.MemberId, m.Name, m.Phone, m.CustomerType, m.CreditLimit, m.Email, m.Address, m.IsActive
       HAVING ISNULL(SUM(b.NetOutstanding), 0) > 0
       ORDER BY m.Name
     `;

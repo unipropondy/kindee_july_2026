@@ -997,10 +997,6 @@ export default function MenuScreen() {
         return; // Wait for user to confirm price
       }
 
-      // Prevent concurrent fetches for the same dish
-      if (fetchingModifiers.current.has(dish.DishId)) return;
-      fetchingModifiers.current.add(dish.DishId);
-
       const cachedData = modifierCache[dish.DishId];
       if (cachedData) {
         if (cachedData.length > 0) {
@@ -1014,6 +1010,10 @@ export default function MenuScreen() {
         }
         return;
       }
+
+      // Prevent concurrent fetches for the same dish
+      if (fetchingModifiers.current.has(dish.DishId)) return;
+      fetchingModifiers.current.add(dish.DishId);
 
       // No need to set isAdding state for UI blocking
       setLoadingModifiers(true);

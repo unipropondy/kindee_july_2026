@@ -34,6 +34,30 @@ router.get("/", async (req, res) => {
       BEGIN
         ALTER TABLE AppSettings ADD EnableCombo BIT DEFAULT 1 WITH VALUES;
       END
+
+      IF NOT EXISTS (
+        SELECT * FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_NAME = 'AppSettings' AND COLUMN_NAME = 'ShowLoyalty'
+      )
+      BEGIN
+        ALTER TABLE AppSettings ADD ShowLoyalty BIT DEFAULT 1 WITH VALUES;
+      END
+
+      IF NOT EXISTS (
+        SELECT * FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_NAME = 'AppSettings' AND COLUMN_NAME = 'ShowRewardPoints'
+      )
+      BEGIN
+        ALTER TABLE AppSettings ADD ShowRewardPoints BIT DEFAULT 1 WITH VALUES;
+      END
+
+      IF NOT EXISTS (
+        SELECT * FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_NAME = 'AppSettings' AND COLUMN_NAME = 'ShowPromoCode'
+      )
+      BEGIN
+        ALTER TABLE AppSettings ADD ShowPromoCode BIT DEFAULT 1 WITH VALUES;
+      END
     `).catch(err => console.warn("Failed self-healing AppSettings column:", err.message));
 
     const settings = await getAppSettings();
@@ -49,7 +73,7 @@ router.get("/", async (req, res) => {
 // 🔹 UPDATE Settings
 router.post("/update", async (req, res) => {
   try {
-    const { upiId, shopName, qrCodeUrl, enableKOT, enableKDS, enableCheckoutBill, enableCheckoutFlow, enableDirectProcessToPay, customerSideDisplay, enableGuestDetailsPopup, enableCashDrawer, SVCIdentification, enableKDSPrint, enableCombo } = req.body;
+    const { upiId, shopName, qrCodeUrl, enableKOT, enableKDS, enableCheckoutBill, enableCheckoutFlow, enableDirectProcessToPay, customerSideDisplay, enableGuestDetailsPopup, enableCashDrawer, SVCIdentification, enableKDSPrint, enableCombo, showLoyalty, showRewardPoints, showPromoCode } = req.body;
     const pool = await poolPromise;
 
     // Use an UPSERT logic (Update if exists, Insert if not)
@@ -68,6 +92,9 @@ router.post("/update", async (req, res) => {
       .input("EnableKDSPrint", sql.Bit, enableKDSPrint !== undefined ? enableKDSPrint : 1)
       .input("SVCIdentification", sql.Bit, SVCIdentification !== undefined ? SVCIdentification : 1)
       .input("EnableCombo", sql.Bit, enableCombo !== undefined ? enableCombo : 1)
+      .input("ShowLoyalty", sql.Bit, showLoyalty !== undefined ? showLoyalty : 1)
+      .input("ShowRewardPoints", sql.Bit, showRewardPoints !== undefined ? showRewardPoints : 1)
+      .input("ShowPromoCode", sql.Bit, showPromoCode !== undefined ? showPromoCode : 1)
       .query(`
         IF EXISTS (SELECT 1 FROM AppSettings)
         BEGIN
@@ -87,12 +114,15 @@ router.post("/update", async (req, res) => {
             EnableKDSPrint = @EnableKDSPrint,
             SVCIdentification = @SVCIdentification,
             EnableCombo = @EnableCombo,
+            ShowLoyalty = @ShowLoyalty,
+            ShowRewardPoints = @ShowRewardPoints,
+            ShowPromoCode = @ShowPromoCode,
             UpdatedOn = GETDATE()
         END
         ELSE
         BEGIN
-          INSERT INTO AppSettings (UPI_ID, ShopName, PayNow_QR_Url, EnableKOT, EnableKDS, EnableCheckoutBill, EnableCheckoutFlow, EnableDirectProcessToPay, CustomerSideDisplay, EnableGuestDetailsPopup, EnableCashDrawer, EnableKDSPrint, SVCIdentification, EnableCombo, UpdatedOn)
-          VALUES (@UPI, @Shop, @QR, @EnableKOT, @EnableKDS, @EnableCheckoutBill, @EnableCheckoutFlow, @EnableDirectProcessToPay, @CustomerSideDisplay, @EnableGuestDetailsPopup, @EnableCashDrawer, @EnableKDSPrint, @SVCIdentification, @EnableCombo, GETDATE())
+          INSERT INTO AppSettings (UPI_ID, ShopName, PayNow_QR_Url, EnableKOT, EnableKDS, EnableCheckoutBill, EnableCheckoutFlow, EnableDirectProcessToPay, CustomerSideDisplay, EnableGuestDetailsPopup, EnableCashDrawer, EnableKDSPrint, SVCIdentification, EnableCombo, ShowLoyalty, ShowRewardPoints, ShowPromoCode, UpdatedOn)
+          VALUES (@UPI, @Shop, @QR, @EnableKOT, @EnableKDS, @EnableCheckoutBill, @EnableCheckoutFlow, @EnableDirectProcessToPay, @CustomerSideDisplay, @EnableGuestDetailsPopup, @EnableCashDrawer, @EnableKDSPrint, @SVCIdentification, @EnableCombo, @ShowLoyalty, @ShowRewardPoints, @ShowPromoCode, GETDATE())
         END
       `);
 

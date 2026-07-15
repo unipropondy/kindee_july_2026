@@ -8,20 +8,40 @@ import { API_URL } from './Config';
  * Works identically on Android (React Native) and web (Electron BrowserWindow
  * via React Native Web + socket.io-client).
  */
-export const socket: Socket = io(API_URL, {
-  transports: ['polling', 'websocket'], // Start with polling, upgrade to websocket
-  reconnectionAttempts: 20,
-  reconnectionDelay: 1500,
-  reconnectionDelayMax: 5000,
-  timeout: 10000,
-  autoConnect: true,
-  forceNew: false,
-});
+const globalAny: any = typeof global !== 'undefined' ? global : typeof window !== 'undefined' ? window : {};
+let _socket: Socket | null = globalAny._customerDisplaySocket || null;
 
-socket.on('connect', () => {
-  console.log('🔌 [CustomerDisplay] Socket connected:', socket.id);
-});
+function getSocket(): Socket {
+  if (_socket) return _socket;
 
-socket.on('connect_error', (error) => {
-  console.error('🔌 [CustomerDisplay] Socket connection error:', error);
+  _socket = io(API_URL, {
+    transports: ['polling', 'websocket'], // Start with polling, upgrade to websocket
+    reconnectionAttempts: 20,
+    reconnectionDelay: 1500,
+    reconnectionDelayMax: 5000,
+    timeout: 10000,
+    autoConnect: true,
+    forceNew: false,
+  });
+
+  _socket.on('connect', () => {
+    console.log('🔌 [CustomerDisplay] Socket connected:', _socket?.id);
+  });
+
+  _socket.on('connect_error', (error) => {
+    console.error('🔌 [CustomerDisplay] Socket connection error:', error);
+  });
+
+  globalAny._customerDisplaySocket = _socket;
+  return _socket;
+}
+
+export const socket: Socket = new Proxy({} as Socket, {
+  get(_target, prop) {
+    return (getSocket() as any)[prop];
+  },
+  set(_target, prop, value) {
+    (getSocket() as any)[prop] = value;
+    return true;
+  },
 });

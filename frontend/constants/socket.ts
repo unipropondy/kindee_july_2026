@@ -5,7 +5,8 @@ import { API_URL } from "./Config";
 // first accessed so it never blocks module evaluation (avoids the 6000ms
 // React Native bridge timeout that fires when this module is imported at
 // the top level during static rendering or on app startup).
-let _socket: Socket | null = null;
+const globalAny: any = typeof global !== "undefined" ? global : typeof window !== "undefined" ? window : {};
+let _socket: Socket | null = globalAny._globalSocket || null;
 
 function getSocket(): Socket {
   if (_socket) return _socket;
@@ -28,6 +29,7 @@ function getSocket(): Socket {
     console.error("🔌 Socket connection error:", error);
   });
 
+  globalAny._globalSocket = _socket;
   return _socket;
 }
 

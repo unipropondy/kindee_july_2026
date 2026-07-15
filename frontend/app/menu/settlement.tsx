@@ -1630,6 +1630,14 @@ const loadDishes = async () => {
           {isTablet && (
             <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
               <TouchableOpacity
+                style={[styles.confirmBtn, { backgroundColor: Theme.primary, paddingVertical: 8, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', gap: 6 }]}
+                onPress={() => router.push("/menu/rewardMaster")}
+              >
+                <Ionicons name="gift-outline" size={18} color="#fff" />
+                <Text style={styles.confirmBtnText}>Rewards</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
                 style={[styles.confirmBtn, { paddingVertical: 8, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', gap: 6 }]}
                 onPress={handlePrintReport}
               >
@@ -1673,21 +1681,21 @@ const loadDishes = async () => {
             {/* Top Overview Cards */}
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 15 }}>
               <TouchableOpacity
-                style={[styles.card, { flex: isTablet ? 1 : undefined, minWidth: isTablet ? 0 : '48%', flexGrow: 1, padding: isTablet ? 15 : 10, alignItems: 'center', justifyContent: 'center', backgroundColor: '#EFF6FF', borderColor: '#BFDBFE', borderWidth: 1 }]}
+                style={[styles.card, { flex: isTablet ? 1 : undefined, minWidth: isTablet ? 0 : '48%', flexGrow: 1, padding: isTablet ? 15 : 10, alignItems: 'center', justifyContent: 'center', backgroundColor: Theme.bgInput, borderColor: Theme.borderStrong, borderWidth: 1 }]}
                 onPress={() => {
                   setLovMode("OPEN");
                   setShowLov(true);
                 }}
               >
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                  <Ionicons name="wallet-outline" size={isTablet ? 16 : 14} color="#3B82F6" />
-                  <Text style={{ fontFamily: Fonts.bold, color: '#1E3A8A', fontSize: isTablet ? 12 : 11 }}>Opening Amount</Text>
+                  <Ionicons name="wallet-outline" size={isTablet ? 16 : 14} color={Theme.textSecondary} />
+                  <Text style={{ fontFamily: Fonts.bold, color: Theme.textSecondary, fontSize: isTablet ? 12 : 11 }}>Opening Amount</Text>
                 </View>
-                <Text style={{ fontFamily: Fonts.black, fontSize: isTablet ? 22 : 16, color: '#1D4ED8', marginTop: 5 }} numberOfLines={1} adjustsFontSizeToFit>{formatCurrency(displayOpeningAmount)}</Text>
+                <Text style={{ fontFamily: Fonts.black, fontSize: isTablet ? 22 : 16, color: Theme.textPrimary, marginTop: 5 }} numberOfLines={1} adjustsFontSizeToFit>{formatCurrency(displayOpeningAmount)}</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={[styles.card, { flex: isTablet ? 1 : undefined, minWidth: isTablet ? 0 : '48%', flexGrow: 1, padding: isTablet ? 15 : 10, alignItems: 'center', justifyContent: 'center', backgroundColor: '#ECFDF5', borderColor: '#A7F3D0', borderWidth: 1 }]}
+                style={[styles.card, { flex: isTablet ? 1 : undefined, minWidth: isTablet ? 0 : '48%', flexGrow: 1, padding: isTablet ? 15 : 10, alignItems: 'center', justifyContent: 'center', backgroundColor: Theme.successBg, borderColor: Theme.successBorder, borderWidth: 1 }]}
                 onPress={() => {
                   if (enableCashDrawer) {
                     Alert.alert("Locked", "Manual Cash In entry is disabled when Cash Drawer is ON.");
@@ -1697,14 +1705,14 @@ const loadDishes = async () => {
                 }}
               >
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                  <Ionicons name="add-circle-outline" size={isTablet ? 16 : 14} color="#10B981" />
-                  <Text style={{ fontFamily: Fonts.bold, color: '#065F46', fontSize: isTablet ? 12 : 11 }}>Cash In</Text>
+                  <Ionicons name="add-circle-outline" size={isTablet ? 16 : 14} color={Theme.success} />
+                  <Text style={{ fontFamily: Fonts.bold, color: Theme.success, fontSize: isTablet ? 12 : 11 }}>Cash In</Text>
                 </View>
-                <Text style={{ fontFamily: Fonts.black, fontSize: isTablet ? 22 : 16, color: '#047857', marginTop: 5 }} numberOfLines={1} adjustsFontSizeToFit>{formatCurrency(totalCashInEntries)}</Text>
+                <Text style={{ fontFamily: Fonts.black, fontSize: isTablet ? 22 : 16, color: Theme.success, marginTop: 5 }} numberOfLines={1} adjustsFontSizeToFit>{formatCurrency(totalCashInEntries)}</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={[styles.card, { flex: isTablet ? 1 : undefined, minWidth: isTablet ? 0 : '48%', flexGrow: 1, padding: isTablet ? 15 : 10, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FEF2F2', borderColor: '#FECACA', borderWidth: 1 }]}
+                style={[styles.card, { flex: isTablet ? 1 : undefined, minWidth: isTablet ? 0 : '48%', flexGrow: 1, padding: isTablet ? 15 : 10, alignItems: 'center', justifyContent: 'center', backgroundColor: Theme.dangerBg, borderColor: Theme.dangerBorder, borderWidth: 1 }]}
                 onPress={() => {
                   if (enableCashDrawer) {
                     Alert.alert("Locked", "Manual Cash Out entry is disabled when Cash Drawer is ON.");
@@ -1714,32 +1722,32 @@ const loadDishes = async () => {
                 }}
               >
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                  <Ionicons name="remove-circle-outline" size={isTablet ? 16 : 14} color="#EF4444" />
-                  <Text style={{ fontFamily: Fonts.bold, color: '#991B1B', fontSize: isTablet ? 12 : 11 }}>Cash Out</Text>
+                  <Ionicons name="remove-circle-outline" size={isTablet ? 16 : 14} color={Theme.danger} />
+                  <Text style={{ fontFamily: Fonts.bold, color: Theme.danger, fontSize: isTablet ? 12 : 11 }}>Cash Out</Text>
                 </View>
-                <Text style={{ fontFamily: Fonts.black, fontSize: isTablet ? 22 : 16, color: '#B91C1C', marginTop: 5 }} numberOfLines={1} adjustsFontSizeToFit>{formatCurrency(totalCashOut)}</Text>
+                <Text style={{ fontFamily: Fonts.black, fontSize: isTablet ? 22 : 16, color: Theme.danger, marginTop: 5 }} numberOfLines={1} adjustsFontSizeToFit>{formatCurrency(totalCashOut)}</Text>
               </TouchableOpacity>
 
-              <View style={[styles.card, { flex: isTablet ? 1 : undefined, minWidth: isTablet ? 0 : '48%', flexGrow: 1, padding: isTablet ? 15 : 10, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F0FDF4', borderColor: '#BBF7D0', borderWidth: 1 }]}>
+              <View style={[styles.card, { flex: isTablet ? 1 : undefined, minWidth: isTablet ? 0 : '48%', flexGrow: 1, padding: isTablet ? 15 : 10, alignItems: 'center', justifyContent: 'center', backgroundColor: Theme.successBg, borderColor: Theme.successBorder, borderWidth: 1 }]}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                  <Ionicons name="trending-up-outline" size={isTablet ? 16 : 14} color="#10B981" />
-                  <Text style={{ fontFamily: Fonts.bold, color: '#166534', fontSize: isTablet ? 12 : 11 }}>Net Sales</Text>
+                  <Ionicons name="trending-up-outline" size={isTablet ? 16 : 14} color={Theme.success} />
+                  <Text style={{ fontFamily: Fonts.bold, color: Theme.success, fontSize: isTablet ? 12 : 11 }}>Net Sales</Text>
                 </View>
-                <Text style={{ fontFamily: Fonts.black, fontSize: isTablet ? 22 : 16, color: '#15803D', marginTop: 5 }} numberOfLines={1} adjustsFontSizeToFit>{formatCurrency(netSales)}</Text>
+                <Text style={{ fontFamily: Fonts.black, fontSize: isTablet ? 22 : 16, color: Theme.success, marginTop: 5 }} numberOfLines={1} adjustsFontSizeToFit>{formatCurrency(netSales)}</Text>
               </View>
 
               <TouchableOpacity
-                style={[styles.card, { flex: isTablet ? 1 : undefined, minWidth: isTablet ? 0 : '48%', flexGrow: 1, padding: isTablet ? 15 : 10, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFF7ED', borderColor: '#FED7AA', borderWidth: 1 }]}
+                style={[styles.card, { flex: isTablet ? 1 : undefined, minWidth: isTablet ? 0 : '48%', flexGrow: 1, padding: isTablet ? 15 : 10, alignItems: 'center', justifyContent: 'center', backgroundColor: Theme.primaryLight, borderColor: Theme.primaryBorder, borderWidth: 1 }]}
                 onPress={() => {
                   setLovMode("CLOSE");
                   setShowLov(true);
                 }}
               >
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                  <Ionicons name="calculator-outline" size={isTablet ? 16 : 14} color="#F97316" />
-                  <Text style={{ fontFamily: Fonts.bold, color: '#9A3412', fontSize: isTablet ? 12 : 11 }}>Closing Amount</Text>
+                  <Ionicons name="calculator-outline" size={isTablet ? 16 : 14} color={Theme.primary} />
+                  <Text style={{ fontFamily: Fonts.bold, color: Theme.primary, fontSize: isTablet ? 12 : 11 }}>Closing Amount</Text>
                 </View>
-                <Text style={{ fontFamily: Fonts.black, fontSize: isTablet ? 22 : 16, color: '#C2410C', marginTop: 5 }} numberOfLines={1} adjustsFontSizeToFit>{formatCurrency(totalClosing)}</Text>
+                <Text style={{ fontFamily: Fonts.black, fontSize: isTablet ? 22 : 16, color: Theme.primaryDark, marginTop: 5 }} numberOfLines={1} adjustsFontSizeToFit>{formatCurrency(totalClosing)}</Text>
               </TouchableOpacity>
             </View>
             

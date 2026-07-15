@@ -442,4 +442,188 @@ router.get("/diagnostic", async (req, res) => {
     }
 });
 
+// ✅ POST /api/tables/move — Transfer cart + order from one table to another
+router.post("/move", async (req, res) => {
+  const { sourceTableId, destTableId } = req.body;
+  const userId = req.body.userId || req.body.UserId || req.body.USERID;
+
+  if (!sourceTableId || !destTableId) {
+    return res.status(400).json({ error: "sourceTableId and destTableId are required" });
+  }
+
+  const cleanSource = String(sourceTableId).replace(/^\{|\}$/g, "").trim().toLowerCase();
+  const cleanDest   = String(destTableId).replace(/^\{|\}$/g, "").trim().toLowerCase();
+
+  if (cleanSource === cleanDest) {
+    return res.status(400).json({ error: "Source and destination tables must be different" });
+  }
+
+  try {
+    const pool = await poolPromise;
+
+    // ── 1. Fetch both table rows ──────────────────────────────────────────
+    const tableRes = await pool.request()
+      .input("src", sql.UniqueIdentifier, cleanSource)
+      .input("dst", sql.UniqueIdentifier, cleanDest)
+      .query(`
+        SELECT
+          TableId, TableNumber, DiningSection, Status,
+          TotalAmount, CurrentOrderId, CustomerName, Pax, entry_status
+        FROM TableMaster
+        WHERE TableId IN (@src, @dst)
+      `);
+
+    const rows = tableRes.recordset;
+    const srcRow = rows.find(r => String(r.TableId).toLowerCase() === cleanSource);
+    const dstRow = rows.find(r => String(r.TableId).toLowerCase() === cleanDest);
+
+    if (!srcRow) return res.status(404).json({ error: "Source table not found" });
+    if (!dstRow) return res.status(404).json({ error: "Destination table not found" });
+
+    // ── 2. Validate states ───────────────────────────────────────────────
+    // Source must be occupied (1=Dining, 2=Checkout, 3=Hold)
+    if (![1, 2, 3].includes(Number(srcRow.Status))) {
+      return res.status(400).json({ error: `Source table is not occupied (status=${srcRow.Status})` });
+    }
+    // Destination must be available (0) or the same move attempt ignored
+    if (Number(dstRow.Status) !== 0) {
+      return res.status(400).json({ error: "Destination table is not available" });
+    }
+
+    const srcTableNo = srcRow.TableNumber;
+    const dstTableNo = dstRow.TableNumber;
+
+    // ── 3. Run atomic SQL transaction ────────────────────────────────────
+    const transaction = new sql.Transaction(pool);
+    await transaction.begin();
+
+    try {
+      // A. Move CartItems: update CartId from source → dest
+      await transaction.request()
+        .input("src", sql.NVarChar(128), cleanSource)
+        .input("dst", sql.NVarChar(128), cleanDest)
+        .query("UPDATE [dbo].[CartItems] SET CartId = @dst WHERE CartId = @src");
+
+      // B. Re-point RestaurantOrderCur to new table number
+      await transaction.request()
+        .input("srcOrderNo", sql.NVarChar(50), srcRow.CurrentOrderId || "")
+        .input("dstTableNo", sql.VarChar(20), dstTableNo)
+        .query(`
+          UPDATE RestaurantOrderCur
+          SET Tableno = @dstTableNo, ModifiedOn = GETDATE()
+          WHERE OrderNumber = @srcOrderNo
+            AND (isOrderClosed = 0 OR isOrderClosed IS NULL)
+        `);
+
+      // Also handle any other open orders for this table number that aren't the CurrentOrderId
+      await transaction.request()
+        .input("srcTableNo", sql.VarChar(20), srcTableNo)
+        .input("dstTableNo", sql.VarChar(20), dstTableNo)
+        .query(`
+          UPDATE RestaurantOrderCur
+          SET Tableno = @dstTableNo, ModifiedOn = GETDATE()
+          WHERE Tableno = @srcTableNo
+            AND (isOrderClosed = 0 OR isOrderClosed IS NULL)
+        `);
+
+      // C. Update destination TableMaster — copy source state directly in SQL
+      //    (avoids JS Date round-trip which fails on some StartTime formats)
+      await transaction.request()
+        .input("src",   sql.UniqueIdentifier, cleanSource)
+        .input("dst",   sql.UniqueIdentifier, cleanDest)
+        .input("modBy", sql.UniqueIdentifier, userId || null)
+        .query(`
+          UPDATE dest
+          SET dest.Status         = src.Status,
+              dest.TotalAmount    = src.TotalAmount,
+              dest.StartTime      = src.StartTime,
+              dest.CurrentOrderId = src.CurrentOrderId,
+              dest.CustomerName   = src.CustomerName,
+              dest.Pax            = src.Pax,
+              dest.entry_status   = src.entry_status,
+              dest.LockedByName   = NULL,
+              dest.ModifiedBy     = @modBy,
+              dest.ModifiedOn     = GETDATE()
+          FROM TableMaster AS dest
+          INNER JOIN TableMaster AS src ON src.TableId = @src
+          WHERE dest.TableId = @dst
+        `);
+
+      // D. Reset source TableMaster to Available
+      await transaction.request()
+        .input("src",   sql.UniqueIdentifier, cleanSource)
+        .input("modBy", sql.UniqueIdentifier, userId || null)
+        .query(`
+          UPDATE TableMaster
+          SET Status         = 0,
+              TotalAmount    = 0,
+              StartTime      = NULL,
+              CurrentOrderId = NULL,
+              CustomerName   = NULL,
+              Pax            = NULL,
+              entry_status   = NULL,
+              LockedByName   = NULL,
+              ModifiedBy     = @modBy,
+              ModifiedOn     = GETDATE()
+          WHERE TableId = @src
+        `);
+
+      await transaction.commit();
+    } catch (txErr) {
+      await transaction.rollback();
+      throw txErr;
+    }
+
+    // ── 4. Emit socket events ────────────────────────────────────────────
+    const io = req.app.get("io");
+    const sectionMap = { "1": "SECTION_1", "2": "SECTION_2", "3": "SECTION_3", "4": "TAKEAWAY" };
+
+    if (io) {
+      // Source table → now Available
+      io.emit("table_status_updated", {
+        tableId:       cleanSource,
+        status:        0,
+        totalAmount:   0,
+        startTime:     null,
+        currentOrderId: null,
+        tableNo:       srcTableNo,
+        section:       sectionMap[String(srcRow.DiningSection)] || srcRow.DiningSection,
+        customerName:  null,
+        pax:           null,
+        modifiedOn:    new Date().toISOString(),
+      });
+
+      // Destination table → now Dining (or whatever source status was)
+      io.emit("table_status_updated", {
+        tableId:       cleanDest,
+        status:        Number(srcRow.Status),
+        totalAmount:   Number(srcRow.TotalAmount) || 0,
+        startTime:     null,   // frontend will get accurate value via fetchTables() refresh
+        currentOrderId: srcRow.CurrentOrderId || null,
+        tableNo:       dstTableNo,
+        section:       sectionMap[String(dstRow.DiningSection)] || dstRow.DiningSection,
+        customerName:  srcRow.CustomerName || null,
+        pax:           srcRow.Pax || null,
+        modifiedOn:    new Date().toISOString(),
+      });
+
+      // Refresh cart listeners for both tables
+      io.emit("cart_updated", { tableId: cleanSource });
+      io.emit("cart_updated", { tableId: cleanDest });
+    }
+
+    res.json({
+      success:      true,
+      sourceTableNo: srcTableNo,
+      destTableNo:   dstTableNo,
+      movedStatus:   Number(srcRow.Status),
+      totalAmount:   Number(srcRow.TotalAmount) || 0,
+    });
+
+  } catch (err) {
+    console.error("MOVE TABLE ERROR:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;

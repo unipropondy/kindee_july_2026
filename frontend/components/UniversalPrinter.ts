@@ -916,16 +916,16 @@ class UniversalPrinter {
           }
           
           .item-qty {
-            font-size: 20px;
-            font-weight: 600;
+            font-size: 24px;
+            font-weight: 900;
             width: 50px;
             line-height: 1;
             margin-right: 8px;
           }
           
           .item-name {
-            font-size: 16px;
-            font-weight: 600;
+            font-size: 22px;
+            font-weight: 900;
             flex: 1;
             line-height: 1.1;
           }
@@ -936,15 +936,16 @@ class UniversalPrinter {
           }
           
           .modifier-item {
-            font-size: 18px;
-            font-weight: bold;
+            font-size: 16px;
+            font-weight: 600;
+            color: #333;
             display: block;
           }
           
           .remarks {
             margin-left: 58px;
-            font-size: 16px;
-            font-weight: bold;
+            font-size: 15px;
+            font-weight: 700;
             font-style: italic;
             margin-top: 4px;
           }
@@ -1031,7 +1032,7 @@ class UniversalPrinter {
                           ${
                             hasCombo
                               ? `<div class="modifier-list">${comboSels.map((g: any) => `
-                                  <div style="font-weight: bold; margin-top: 2px;">${g.groupName}:</div>
+                                  <div style="font-weight: bold; margin-top: 2px; font-size: 15px; color: #555;">${g.groupName}:</div>
                                   ${g.items?.map((opt: any) => `<span class="modifier-item" style="padding-left: 10px;">↳ ${opt.name}</span>`).join("")}
                                 `).join("")}</div>`
                               : ""
@@ -1095,7 +1096,7 @@ class UniversalPrinter {
                         ${comboSels
                           .map(
                             (g: any) => `
-                          <div style="font-weight: bold; margin-top: 2px;">${g.groupName}:</div>
+                          <div style="font-weight: bold; margin-top: 2px; font-size: 15px; color: #555;">${g.groupName}:</div>
                           ${g.items?.map((opt: any) => `<span class="modifier-item" style="padding-left: 10px;">↳ ${opt.name}</span>`).join("")}
                         `,
                           )
@@ -1652,6 +1653,10 @@ class UniversalPrinter {
     if (saleData.waiterName && saleData.waiterName !== "Staff") {
       text += `[L]Waiter: ${saleData.waiterName}\n`;
     }
+    // 🏆 Print Member Mobile Number on receipt
+    if (saleData.mobileNo) {
+      text += `[L]Member Phone: ${saleData.mobileNo}\n`;
+    }
     text += "[L]------------------------------------------------\n";
 
     // Items Header
@@ -1851,8 +1856,9 @@ class UniversalPrinter {
       : scPercentage;
 
     const companySettings = useCompanySettingsStore.getState().settings;
-    const takeawayRate = companySettings?.takeawayCharges || 0;
-    const takeawayQty = (saleData.items || []).reduce((sum: number, item: any) => {
+    const takeawayRateFromSettings = companySettings?.takeawayCharges || 0;
+    let takeawayCharge = saleData.takeawayCharge !== undefined ? parseFloat(String(saleData.takeawayCharge)) : 0;
+    let takeawayQty = (saleData.items || []).reduce((sum: number, item: any) => {
       const isTW = item.isTakeaway || item.IsTakeaway || item.isTakeAway || item.IsTakeAway;
       const isVoided = item.status === "VOIDED" || item.StatusCode === 0;
       if (isTW && !isVoided) {
@@ -1861,7 +1867,13 @@ class UniversalPrinter {
       return sum;
     }, 0);
 
-    const takeawayCharge = takeawayQty * takeawayRate;
+    if (takeawayQty === 0 && takeawayCharge > 0) {
+      const effectiveRate = takeawayRateFromSettings > 0 ? takeawayRateFromSettings : takeawayCharge;
+      takeawayQty = Math.round(takeawayCharge / effectiveRate) || 1;
+    } else if (takeawayQty > 0 && takeawayCharge === 0) {
+      takeawayCharge = takeawayQty * takeawayRateFromSettings;
+    }
+    const takeawayRate = takeawayQty > 0 ? (takeawayCharge / takeawayQty) : takeawayRateFromSettings;
     const taxableAmount = currentSubtotal + serviceChargeAmount + takeawayCharge;
     const gstAmountRaw = hasGST ? taxableAmount * (gstRate / 100) : 0;
     const gstAmount = Math.round(gstAmountRaw * 100) / 100;
@@ -1915,6 +1927,16 @@ class UniversalPrinter {
 
     text += `[R]<font size=\'big\'><B>TOTAL: ${symbol}${finalTotal.toFixed(2)}</B></font>\n`;
     text += "[C]================================================\n";
+
+    // 🏆 Print Reward point transaction stats
+    if (parseFloat(saleData.rewardPointsEarned) > 0) {
+      text += `[L]Reward Points Earned: +$${parseFloat(saleData.rewardPointsEarned).toFixed(2)}\n`;
+    }
+    if (parseFloat(saleData.memberRewardBalance) > 0) {
+      text += `[L]Available Member Credit: $${parseFloat(saleData.memberRewardBalance).toFixed(2)}\n`;
+      text += "[C]------------------------------------------------\n";
+    }
+
     text += "[C]<B>THANK YOU! COME AGAIN!</B>\n";
     text += "[C]SMART-POS BY UNIPROSG\n\n\n\n";
 

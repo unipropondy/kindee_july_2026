@@ -1995,63 +1995,106 @@ export default React.memo(function CartSidebar({ width = 400 }: CartSidebarProps
                       );
                     }
                   } else {
-                    // Takeaway Flow 2: Just show Green "Proceed to Pay" full width
-                    return (
-                      <TouchableOpacity
-                        disabled={isCheckingOut}
-                        style={[
-                          styles.proceedBtn,
-                          { flex: 1, backgroundColor: "#10B981" },
-                          isCheckingOut && { opacity: 0.6 }
-                        ]}
-                        onPress={async () => {
-                          if (unsentCount > 0) {
-                            if (isCheckingOut) return;
-                            useCartStore.getState().cancelPendingSync();
-                            const tableId = orderContext.tableId;
-                            if (!tableId) return;
+                    // Takeaway Flow 2: Split layout with KOT button if unsentCount > 0, otherwise full width Proceed to Pay
+                    if (unsentCount > 0) {
+                      return (
+                        <>
+                          {/* KOT button (Indigo, text 'KOT', 50px) */}
+                          <TouchableOpacity
+                            disabled={isCheckingOut}
+                            style={[
+                              styles.compactIconBtn,
+                              { backgroundColor: "#4F46E5", marginRight: 8 },
+                              isCheckingOut && { opacity: 0.6 }
+                            ]}
+                            onPress={async () => {
+                              if (isCheckingOut) return;
+                              setIsCheckingOut(true);
+                              try {
+                                await handleSendOrder(true);
+                              } catch (err) {
+                                console.error("KOT send error:", err);
+                              } finally {
+                                setIsCheckingOut(false);
+                              }
+                            }}
+                          >
+                            {isCheckingOut ? (
+                              <ActivityIndicator size="small" color="#fff" />
+                            ) : (
+                              <Text style={{ color: "#fff", fontFamily: Fonts.black, fontSize: 13 }}>KOT</Text>
+                            )}
+                          </TouchableOpacity>
 
-                            setIsCheckingOut(true);
-                            try {
-                              const targetOrderId = activeOrder?.orderId || currentTableOrderId || "NEW";
-                              const officialOrderId = await saveCartHelper(tableId, targetOrderId, true);
+                          {/* Proceed to Pay (Green, flex-grow) */}
+                          <TouchableOpacity
+                            disabled={isCheckingOut}
+                            style={[
+                              styles.proceedBtn,
+                              { flex: 1, backgroundColor: "#10B981" },
+                              isCheckingOut && { opacity: 0.6 }
+                            ]}
+                            onPress={async () => {
+                              if (isCheckingOut) return;
+                              useCartStore.getState().cancelPendingSync();
+                              const tableId = orderContext.tableId;
+                              if (!tableId) return;
 
-                              updateTableStatus(
-                                tableId,
-                                orderContext.section || "TAKEAWAY",
-                                orderContext.takeawayNo!,
-                                officialOrderId || targetOrderId,
-                                "SENT",
-                                new Date().toISOString(),
-                                undefined,
-                                payableAmount,
-                              );
+                              setIsCheckingOut(true);
+                              try {
+                                const targetOrderId = activeOrder?.orderId || currentTableOrderId || "NEW";
+                                const officialOrderId = await saveCartHelper(tableId, targetOrderId, true);
 
-                              await useCartStore.getState().fetchCartFromDB(tableId);
-                              await useActiveOrdersStore.getState().fetchActiveKitchenOrders();
+                                updateTableStatus(
+                                  tableId,
+                                  orderContext.section || "TAKEAWAY",
+                                  orderContext.takeawayNo!,
+                                  officialOrderId || targetOrderId,
+                                  "SENT",
+                                  new Date().toISOString(),
+                                  undefined,
+                                  payableAmount,
+                                );
 
-                              router.push("/summary");
-                            } catch (err) {
-                              console.error("Takeaway Direct process to pay error:", err);
-                              showToast({ type: "error", message: "Error", subtitle: "Failed to process payment." });
-                            } finally {
-                              setIsCheckingOut(false);
-                            }
-                          } else {
+                                await useCartStore.getState().fetchCartFromDB(tableId);
+                                await useActiveOrdersStore.getState().fetchActiveKitchenOrders();
+
+                                router.push("/summary");
+                              } catch (err) {
+                                console.error("Takeaway Direct process to pay error:", err);
+                                showToast({ type: "error", message: "Error", subtitle: "Failed to process payment." });
+                              } finally {
+                                setIsCheckingOut(false);
+                              }
+                            }}
+                          >
+                            {isCheckingOut ? (
+                              <ActivityIndicator size="small" color="#fff" />
+                            ) : (
+                              <>
+                                <Ionicons name="card-outline" size={iconSize} color="#fff" />
+                                <Text style={styles.btnText}>Proceed to Pay</Text>
+                              </>
+                            )}
+                          </TouchableOpacity>
+                        </>
+                      );
+                    } else {
+                      return (
+                        <TouchableOpacity
+                          style={[
+                            styles.proceedBtn,
+                            { flex: 1, backgroundColor: "#10B981" },
+                          ]}
+                          onPress={() => {
                             router.push("/summary");
-                          }
-                        }}
-                      >
-                        {isCheckingOut ? (
-                          <ActivityIndicator size="small" color="#fff" />
-                        ) : (
-                          <>
-                            <Ionicons name="card-outline" size={iconSize} color="#fff" />
-                            <Text style={styles.btnText}>Proceed to Pay</Text>
-                          </>
-                        )}
-                      </TouchableOpacity>
-                    );
+                          }}
+                        >
+                          <Ionicons name="card-outline" size={iconSize} color="#fff" />
+                          <Text style={styles.btnText}>Proceed to Pay</Text>
+                        </TouchableOpacity>
+                      );
+                    }
                   }
                 }
 

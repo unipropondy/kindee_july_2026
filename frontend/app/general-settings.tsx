@@ -326,13 +326,23 @@ export default function GeneralSettingsScreen() {
     <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
       {/* Header */}
       <View style={styles.header}>
+        <TouchableOpacity 
+          onPress={() => {
+            if (router.canGoBack()) {
+              router.back();
+            } else {
+              router.replace("/menu/settlement" as any);
+            }
+          }} 
+          style={styles.backBtn} 
+          activeOpacity={0.7}
+        >
+          <Ionicons name="arrow-back" size={24} color={Theme.textPrimary} />
+        </TouchableOpacity>
         <View style={styles.headerLeft}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn} activeOpacity={0.7}>
-            <Ionicons name="arrow-back" size={24} color={Theme.textPrimary} />
-          </TouchableOpacity>
-          <View style={styles.headerTitleContainer}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+            <Ionicons name="settings" size={22} color={Theme.primary} />
             <Text style={styles.headerTitle}>General Settings</Text>
-            <Text style={styles.headerSubtitle}>Configure global system preferences</Text>
           </View>
         </View>
       </View>
@@ -372,7 +382,13 @@ export default function GeneralSettingsScreen() {
       <View style={styles.footer}>
         <TouchableOpacity
           style={styles.cancelBtn}
-          onPress={() => router.back()}
+          onPress={() => {
+            if (router.canGoBack()) {
+              router.back();
+            } else {
+              router.replace("/menu/settlement" as any);
+            }
+          }}
           disabled={saving || loading}
           activeOpacity={0.7}
         >
@@ -442,39 +458,49 @@ export default function GeneralSettingsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#F8FAFC",
+    backgroundColor: "#FAF7F2",
   },
   header: {
     height: 72,
     borderBottomWidth: 1,
-    borderBottomColor: "#E2E8F0",
-    backgroundColor: "#fff",
+    borderBottomColor: "#E5E7EB",
+    backgroundColor: "#FAF7F2",
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
+    justifyContent: "center",
     paddingHorizontal: 24,
+    position: "relative",
   },
   headerLeft: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 16,
+    justifyContent: "center",
   },
   backBtn: {
+    position: "absolute",
+    left: 24,
     padding: 8,
-    borderRadius: 8,
-    backgroundColor: "#F1F5F9",
+    borderRadius: 10,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    zIndex: 10,
   },
-  headerTitleContainer: {},
+  headerTitleContainer: {
+    alignItems: "center",
+  },
   headerTitle: {
     fontSize: 20,
-    fontFamily: Fonts.bold,
+    fontFamily: Fonts.black,
     color: Theme.textPrimary,
+    textAlign: "center",
   },
   headerSubtitle: {
     fontSize: 12,
-    fontFamily: Fonts.regular,
+    fontFamily: Fonts.medium,
     color: Theme.textSecondary,
     marginTop: 2,
+    textAlign: "center",
   },
   scrollContainer: {
     flex: 1,
@@ -492,23 +518,26 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     backgroundColor: "#fff",
-    borderWidth: 1.5,
-    borderColor: "#E2E8F0",
-    borderRadius: 12,
-    padding: 16,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    borderRadius: 16,
+    padding: 18,
     marginBottom: 16,
-    shadowColor: "#0F172A",
-    shadowOffset: { width: 0, height: 1 },
+    shadowColor: "#172B4D",
+    shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.03,
-    shadowRadius: 2,
-    elevation: 1,
+    shadowRadius: 8,
+    elevation: 2,
   },
   settingCardActive: {
-    borderColor: Theme.primary + "30",
     backgroundColor: "#fff",
-    shadowColor: Theme.primary,
-    shadowOpacity: 0.05,
-    shadowRadius: 6,
+    borderWidth: 1,
+    borderColor: "#FF6B00",
+    borderLeftWidth: 4,
+    borderLeftColor: "#FF6B00",
+    shadowColor: "#FF6B00",
+    shadowOpacity: 0.04,
+    shadowRadius: 10,
   },
   cardMobile: {
     width: "100%",
@@ -534,10 +563,10 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   iconWrapperActive: {
-    backgroundColor: Theme.primary + "12",
+    backgroundColor: "#FFF7ED",
   },
   iconWrapperInactive: {
-    backgroundColor: "#F1F5F9",
+    backgroundColor: "#F3F4F6",
   },
   settingTitle: {
     fontSize: 14,
@@ -574,9 +603,9 @@ const styles = StyleSheet.create({
   },
   footer: {
     padding: 20,
-    backgroundColor: "#fff",
+    backgroundColor: "#FAF7F2",
     borderTopWidth: 1,
-    borderTopColor: "#E2E8F0",
+    borderTopColor: "#E5E7EB",
     flexDirection: "row",
     justifyContent: "flex-end",
     gap: 12,
@@ -586,7 +615,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: "#E2E8F0",
+    borderColor: "#E5E7EB",
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "#fff",
@@ -600,10 +629,15 @@ const styles = StyleSheet.create({
     height: 46,
     paddingHorizontal: 28,
     borderRadius: 10,
-    backgroundColor: Theme.primary,
+    backgroundColor: "#FF6B00",
     alignItems: "center",
     justifyContent: "center",
     minWidth: 140,
+    shadowColor: "#FF6B00",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 6,
+    elevation: 3,
   },
   saveBtnText: {
     fontSize: 14,
@@ -652,13 +686,14 @@ const styles = StyleSheet.create({
   },
   pwInput: {
     height: 44,
-    borderWidth: 1.5,
-    borderColor: "#E2E8F0",
+    borderWidth: 0,
+    backgroundColor: "#F3F4F6",
     borderRadius: 8,
     paddingHorizontal: 12,
     fontSize: 14,
     fontFamily: Fonts.regular,
     color: Theme.textPrimary,
+    outlineWidth: 0,
   },
   pwBtn: {
     height: 44,
@@ -666,6 +701,11 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     alignItems: "center",
     justifyContent: "center",
+    shadowColor: Theme.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 6,
+    elevation: 3,
   },
   pwBtnText: {
     fontSize: 14,

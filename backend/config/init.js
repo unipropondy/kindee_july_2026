@@ -932,7 +932,7 @@ async function initDB(pool) {
 
           IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'UX_LoyaltyRule_ActivePurchaseDishGroup' AND object_id = OBJECT_ID('[dbo].[LoyaltyRule]'))
           BEGIN
-              EXEC(N'CREATE UNIQUE NONCLUSTERED INDEX UX_LoyaltyRule_ActivePurchaseDishGroup ON [dbo].[LoyaltyRule](PurchaseDishGroupId) WHERE PurchaseDishGroupId IS NOT NULL AND IsActive = 1;');
+              CREATE UNIQUE NONCLUSTERED INDEX UX_LoyaltyRule_ActivePurchaseDishGroup ON [dbo].[LoyaltyRule](PurchaseDishGroupId) WHERE PurchaseDishGroupId IS NOT NULL AND IsActive = 1;
           END
       END
     `);

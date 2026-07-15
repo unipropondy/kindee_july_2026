@@ -90,7 +90,7 @@ const defaultConfig: BridgeConfig = {
   backends: [
     {
       name: 'RN POS',
-      url: 'https://kindeejuly2026-production.up.railway.app',
+      url: 'https://demo2026pondy-production.up.railway.app',
       enabled: true
     },
     {
@@ -114,7 +114,7 @@ function loadConfig(): BridgeConfig {
 
     // Backward compatibility conversion:
     if (!parsed.backends || !Array.isArray(parsed.backends)) {
-      const url = parsed.apiUrl || parsed.backendUrl || 'https://kindeejuly2026-production.up.railway.app';
+      const url = parsed.apiUrl || parsed.backendUrl || 'https://demo2026pondy-production.up.railway.app';
       parsed.backends = [
         {
           name: 'Default',

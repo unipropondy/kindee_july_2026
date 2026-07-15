@@ -11,6 +11,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  Modal,
   useWindowDimensions
 } from "react-native";
 import { useRouter } from "expo-router";
@@ -28,6 +29,11 @@ export default function RewardMasterScreen() {
   const { width } = useWindowDimensions();
   const isTablet = width >= 768;
 
+  // Admin access validation states
+  const [isAdminUnlocked, setIsAdminUnlocked] = useState(false);
+  const [passwordValue, setPasswordValue] = useState("");
+  const [verifyingPassword, setVerifyingPassword] = useState(false);
+
   // Rule configuration states
   const [spendAmount, setSpendAmount] = useState("100");
   const [creditAmount, setCreditAmount] = useState("1");
@@ -44,10 +50,12 @@ export default function RewardMasterScreen() {
   const [history, setHistory] = useState<any[]>([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
 
-  // Fetch active rule on load
+  // Fetch active rule on load (after admin validation passes)
   useEffect(() => {
-    fetchActiveRule();
-  }, []);
+    if (isAdminUnlocked) {
+      fetchActiveRule();
+    }
+  }, [isAdminUnlocked]);
 
   const fetchActiveRule = async () => {
     try {
@@ -62,6 +70,31 @@ export default function RewardMasterScreen() {
     } catch (err: any) {
       console.error("Error fetching reward rule:", err);
       Alert.alert("Error", "Failed to load active reward configurations.");
+    }
+  };
+
+  const handlePasswordVerify = async () => {
+    if (!passwordValue) {
+      Alert.alert("Required", "Please enter password");
+      return;
+    }
+    setVerifyingPassword(true);
+    try {
+      const verifyRes = await fetch(`${API_URL}/api/auth/verify`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: passwordValue }),
+      });
+      const verifyData = await verifyRes.json();
+      if (verifyData.success) {
+        setIsAdminUnlocked(true);
+      } else {
+        Alert.alert("Access Denied", "Incorrect admin password");
+      }
+    } catch (err) {
+      Alert.alert("Error", "Could not verify password. Check connection.");
+    } finally {
+      setVerifyingPassword(false);
     }
   };
 
@@ -127,17 +160,19 @@ export default function RewardMasterScreen() {
     }
   };
 
+  const handleBack = () => {
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace("/menu/settlement" as any);
+    }
+  };
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.header}>
-        <TouchableOpacity style={styles.backBtn} onPress={() => {
-          if (router.canGoBack()) {
-            router.back();
-          } else {
-            router.replace("/menu/settlement" as any);
-          }
-        }}>
-          <Ionicons name="arrow-back" size={24} color={Theme.textSecondary} />
+        <TouchableOpacity style={styles.backBtn} onPress={handleBack}>
+          <Ionicons name="arrow-back" size={24} color={Theme.textPrimary} />
         </TouchableOpacity>
         <View style={{ flexDirection: "row", alignItems: "center" }}>
           <FontAwesome5 name="gift" size={18} color="#FF6B00" style={{ marginRight: 8 }} />
@@ -233,7 +268,7 @@ export default function RewardMasterScreen() {
                     style={styles.searchInput}
                     value={searchText}
                     onChangeText={handleSearchMembers}
-                    placeholder="Search by name or phone..."
+                    placeholder="Search members..."
                   />
                   {isSearchingMembers && <ActivityIndicator size="small" color={Theme.primary} />}
                 </View>
@@ -366,6 +401,54 @@ export default function RewardMasterScreen() {
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
+
+      {/* Access Verification Modal */}
+      <Modal
+        visible={!isAdminUnlocked}
+        transparent
+        animationType="fade"
+        onRequestClose={handleBack}
+      >
+        <View style={styles.pwOverlay}>
+          <View style={styles.pwModalContentContainer}>
+            <View style={styles.pwIconContainer}>
+              <FontAwesome5 name="lock" size={32} color="#FF6B00" />
+            </View>
+            <Text style={styles.pwHeaderTitleCentered}>🔒 Admin Verification</Text>
+            <Text style={styles.pwSubtitleCentered}>
+              Enter admin password to access Shop Settings
+            </Text>
+
+            <TextInput
+              style={styles.pwInputContainer}
+              secureTextEntry
+              placeholder="Enter Password"
+              placeholderTextColor="#9CA3AF"
+              value={passwordValue}
+              onChangeText={setPasswordValue}
+              onSubmitEditing={handlePasswordVerify}
+              autoFocus
+            />
+
+            <View style={styles.pwModalButtonsRow}>
+              <TouchableOpacity style={styles.pwCancelBtn} onPress={handleBack}>
+                <Text style={styles.pwCancelBtnText}>Back</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={styles.pwVerifyBtn} 
+                onPress={handlePasswordVerify}
+                disabled={verifyingPassword}
+              >
+                {verifyingPassword ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={styles.pwVerifyBtnText}>Verify</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -373,7 +456,7 @@ export default function RewardMasterScreen() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: "#F9FAFB",
+    backgroundColor: "#FAF7F2",
   },
   header: {
     flexDirection: "row",
@@ -382,12 +465,17 @@ const styles = StyleSheet.create({
     padding: 16,
     borderBottomWidth: 1,
     borderBottomColor: "#E5E7EB",
-    backgroundColor: "#fff",
+    backgroundColor: "#FAF7F2",
     position: "relative",
   },
   backBtn: {
     position: "absolute",
     left: 16,
+    padding: 8,
+    borderRadius: 10,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
     zIndex: 10,
   },
   headerTitle: {
@@ -401,15 +489,15 @@ const styles = StyleSheet.create({
   },
   card: {
     backgroundColor: "#fff",
-    borderRadius: 12,
+    borderRadius: 16,
     padding: 20,
     borderWidth: 1,
     borderColor: "#E5E7EB",
     shadowColor: "#172B4D",
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.05,
+    shadowOpacity: 0.03,
     shadowRadius: 8,
-    elevation: 3,
+    elevation: 2,
   },
   premiumCard: {
     borderTopWidth: 4,
@@ -679,5 +767,113 @@ const styles = StyleSheet.create({
   },
   pointsRedeemedText: {
     color: "#E02424",
-  }
+  },
+  pwOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(15, 23, 42, 0.4)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  pwModalContent: {
+    width: 380,
+    backgroundColor: "#fff",
+    borderRadius: 16,
+    padding: 24,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 5,
+  },
+  pwHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 16,
+  },
+  pwModalContentContainer: {
+    width: 380,
+    backgroundColor: "#fff",
+    borderRadius: 24,
+    padding: 32,
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.08,
+    shadowRadius: 20,
+    elevation: 5,
+  },
+  pwIconContainer: {
+    marginBottom: 20,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  pwHeaderTitleCentered: {
+    fontSize: 20,
+    fontFamily: Fonts.black,
+    color: Theme.textPrimary,
+    textAlign: "center",
+    marginBottom: 8,
+  },
+  pwSubtitleCentered: {
+    fontSize: 13,
+    fontFamily: Fonts.medium,
+    color: "#6B7280",
+    textAlign: "center",
+    marginBottom: 24,
+  },
+  pwInputContainer: {
+    width: "100%",
+    height: 48,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    fontSize: 14,
+    fontFamily: Fonts.medium,
+    color: Theme.textPrimary,
+    backgroundColor: "#FAF7F2",
+    marginBottom: 24,
+    textAlign: "center",
+    outlineWidth: 0,
+  },
+  pwModalButtonsRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    width: "100%",
+    gap: 12,
+  },
+  pwCancelBtn: {
+    flex: 1,
+    height: 46,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#fff",
+  },
+  pwCancelBtnText: {
+    fontSize: 14,
+    fontFamily: Fonts.bold,
+    color: "#6B7280",
+  },
+  pwVerifyBtn: {
+    flex: 1,
+    height: 46,
+    borderRadius: 12,
+    backgroundColor: "#FF6B00",
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#FF6B00",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 6,
+    elevation: 3,
+  },
+  pwVerifyBtnText: {
+    fontSize: 14,
+    fontFamily: Fonts.bold,
+    color: "#fff",
+  },
 });

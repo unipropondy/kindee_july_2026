@@ -1944,36 +1944,35 @@ export default function SummaryScreen() {
                         gap: 4
                       }}
                     >
-                      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-                        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                          <Ionicons name="gift" size={16} color="#F97316" />
-                          <Text style={{ fontSize: 13, fontFamily: Fonts.black, color: Theme.textPrimary }}>
-                            Reward Member: {rewardMember.Name}
-                          </Text>
-                        </View>
-                        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                          <TouchableOpacity
-                            onPress={() => setShowRewardModal(true)}
-                            style={{ paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6, backgroundColor: "#FFEDD5" }}
-                          >
-                            <Text style={{ fontSize: 11, fontFamily: Fonts.bold, color: "#F97316" }}>Change</Text>
-                          </TouchableOpacity>
-                          <TouchableOpacity
-                            onPress={() => {
-                              // If the current discount was applied as a reward discount, clear it too
-                              if (discountInfo?.applied && discountInfo?.label?.startsWith("Reward:")) {
-                                const cleared = { applied: false, type: "fixed" as const, value: 0, label: "" };
-                                applyDiscount(cleared);
-                                const ctx = getOrderContext();
-                                if (ctx) updateOrderDiscount(ctx, cleared);
-                              }
-                              setRewardMember(null);
-                            }}
-                            style={{ paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6, backgroundColor: "#FEE2E2" }}
-                          >
-                            <Text style={{ fontSize: 11, fontFamily: Fonts.bold, color: "#DC2626" }}>Remove</Text>
-                          </TouchableOpacity>
-                        </View>
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                        <Ionicons name="gift" size={16} color="#F97316" />
+                        <Text style={{ fontSize: 13, fontFamily: Fonts.black, color: Theme.textPrimary, flex: 1 }}>
+                          Reward Member: {rewardMember.Name}
+                        </Text>
+                      </View>
+
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginLeft: 22, marginVertical: 4 }}>
+                        <TouchableOpacity
+                          onPress={() => setShowRewardModal(true)}
+                          style={{ paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, backgroundColor: "#FFEDD5" }}
+                        >
+                          <Text style={{ fontSize: 11, fontFamily: Fonts.bold, color: "#F97316" }}>Change</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          onPress={() => {
+                            // If the current discount was applied as a reward discount, clear it too
+                            if (discountInfo?.applied && discountInfo?.label?.startsWith("Reward:")) {
+                              const cleared = { applied: false, type: "fixed" as const, value: 0, label: "" };
+                              applyDiscount(cleared);
+                              const ctx = getOrderContext();
+                              if (ctx) updateOrderDiscount(ctx, cleared);
+                            }
+                            setRewardMember(null);
+                          }}
+                          style={{ paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, backgroundColor: "#FEE2E2" }}
+                        >
+                          <Text style={{ fontSize: 11, fontFamily: Fonts.bold, color: "#DC2626" }}>Remove</Text>
+                        </TouchableOpacity>
                       </View>
 
                       <Text style={{ fontSize: 12, fontFamily: Fonts.bold, color: Theme.textSecondary, marginLeft: 22 }}>

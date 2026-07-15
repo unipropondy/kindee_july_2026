@@ -6,7 +6,7 @@
   "backends": [
     {
       "name": "RN POS",
-      "url": "https://demo2026pondy-production.up.railway.app",
+      "url": "https://kindeejuly2026-production.up.railway.app",
       "enabled": true
     },
     {

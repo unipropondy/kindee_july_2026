@@ -11,13 +11,13 @@
     "preview": {
       "distribution": "internal",
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://demo2026pondy-production.up.railway.app"
+        "EXPO_PUBLIC_API_URL": "https://kindeejuly2026-production.up.railway.app"
       }
     },
     "production": {
       "autoIncrement": true,
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://demo2026pondy-production.up.railway.app"
+        "EXPO_PUBLIC_API_URL": "https://kindeejuly2026-production.up.railway.app"
       },
       "android": {
         "buildType": "apk"

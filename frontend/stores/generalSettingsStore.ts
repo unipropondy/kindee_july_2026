@@ -19,6 +19,10 @@ export interface GeneralSettings {
   showRewardPoints: boolean;
   showPromoCode: boolean;
   enableComboPrint: boolean;
+  enablePrintPoller?: boolean;
+  printPollerUrl?: string;
+  printPollerToken?: string;
+  printPollerStoreId?: string;
 }
 
 interface GeneralSettingsState {
@@ -47,6 +51,10 @@ export const useGeneralSettingsStore = create<GeneralSettingsState>()(
         showRewardPoints: true,
         showPromoCode: true,
         enableComboPrint: true,
+        enablePrintPoller: true,
+        printPollerUrl: "https://kindeejuly2026-production.up.railway.app",
+        printPollerToken: "unipro-pos-bridge-token-2026",
+        printPollerStoreId: "1",
       },
       loading: false,
 

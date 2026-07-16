@@ -103,6 +103,11 @@ export default function GeneralSettingsScreen() {
   const [showRewardPoints, setShowRewardPoints] = useState(settings.showRewardPoints !== undefined ? settings.showRewardPoints : true);
   const [showPromoCode, setShowPromoCode] = useState(settings.showPromoCode !== undefined ? settings.showPromoCode : true);
 
+  const [enablePrintPoller, setEnablePrintPoller] = useState(settings.enablePrintPoller !== undefined ? settings.enablePrintPoller : true);
+  const [printPollerUrl, setPrintPollerUrl] = useState(settings.printPollerUrl || "https://kindeejuly2026-production.up.railway.app");
+  const [printPollerToken, setPrintPollerToken] = useState(settings.printPollerToken || "unipro-pos-bridge-token-2026");
+  const [printPollerStoreId, setPrintPollerStoreId] = useState(settings.printPollerStoreId || "1");
+
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [passwordValue, setPasswordValue] = useState("");
   const [verifyingPassword, setVerifyingPassword] = useState(false);
@@ -127,6 +132,11 @@ export default function GeneralSettingsScreen() {
     setShowLoyalty(settings.showLoyalty !== undefined ? settings.showLoyalty : true);
     setShowRewardPoints(settings.showRewardPoints !== undefined ? settings.showRewardPoints : true);
     setShowPromoCode(settings.showPromoCode !== undefined ? settings.showPromoCode : true);
+
+    setEnablePrintPoller(settings.enablePrintPoller !== undefined ? settings.enablePrintPoller : true);
+    setPrintPollerUrl(settings.printPollerUrl || "https://kindeejuly2026-production.up.railway.app");
+    setPrintPollerToken(settings.printPollerToken || "unipro-pos-bridge-token-2026");
+    setPrintPollerStoreId(settings.printPollerStoreId || "1");
 
     let initialCheckoutFlow = settings.enableCheckoutFlow;
     let initialDirectProcess = settings.enableDirectProcessToPay;
@@ -213,6 +223,10 @@ export default function GeneralSettingsScreen() {
       showRewardPoints,
       showPromoCode,
       enableComboPrint,
+      enablePrintPoller,
+      printPollerUrl,
+      printPollerToken,
+      printPollerStoreId,
     });
     setSaving(false);
 
@@ -385,6 +399,58 @@ export default function GeneralSettingsScreen() {
               <CustomSwitch value={item.value} onValueChange={item.onToggle} />
             </View>
           ))}
+        </View>
+
+        {/* QR Print Poller Section */}
+        <View style={styles.pollerSection}>
+          <View style={[styles.settingCard, enablePrintPoller && styles.settingCardActive, { width: "100%", marginBottom: 12 }]}>
+            <View style={styles.cardLeft}>
+              <View style={styles.cardHeaderRow}>
+                <View style={[styles.iconWrapper, enablePrintPoller ? styles.iconWrapperActive : styles.iconWrapperInactive]}>
+                  <Ionicons name="print-outline" size={18} color={enablePrintPoller ? Theme.primary : Theme.textSecondary} />
+                </View>
+                <Text style={styles.settingTitle}>QR Code Print Server (Poller)</Text>
+              </View>
+              <Text style={styles.settingDesc}>Poll and print QR orders from the online Railway server automatically.</Text>
+            </View>
+            <CustomSwitch value={enablePrintPoller} onValueChange={setEnablePrintPoller} />
+          </View>
+
+          {enablePrintPoller && (
+            <View style={styles.pollerInputsContainer}>
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Railway Poller URL</Text>
+                <TextInput
+                  style={styles.textInput}
+                  placeholder="https://your-railway-url.app"
+                  value={printPollerUrl}
+                  onChangeText={setPrintPollerUrl}
+                  autoCapitalize="none"
+                />
+              </View>
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Bridge Security Token</Text>
+                <TextInput
+                  style={styles.textInput}
+                  placeholder="Enter security token"
+                  value={printPollerToken}
+                  onChangeText={setPrintPollerToken}
+                  secureTextEntry
+                  autoCapitalize="none"
+                />
+              </View>
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Store ID</Text>
+                <TextInput
+                  style={styles.textInput}
+                  placeholder="Enter Store ID"
+                  value={printPollerStoreId}
+                  onChangeText={setPrintPollerStoreId}
+                  autoCapitalize="none"
+                />
+              </View>
+            </View>
+          )}
         </View>
       </ScrollView>
 
@@ -721,5 +787,39 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontFamily: Fonts.bold,
     color: "#fff",
+  },
+  pollerSection: {
+    marginTop: 20,
+    width: "100%",
+    backgroundColor: "#FFFFFF",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    padding: 16,
+  },
+  pollerInputsContainer: {
+    marginTop: 16,
+    gap: 16,
+  },
+  inputGroup: {
+    width: "100%",
+    gap: 8,
+  },
+  inputLabel: {
+    fontSize: 12,
+    fontFamily: Fonts.bold,
+    color: Theme.textSecondary,
+  },
+  textInput: {
+    height: 44,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    backgroundColor: "#F9FAFB",
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    fontSize: 14,
+    fontFamily: Fonts.regular,
+    color: Theme.textPrimary,
+    outlineWidth: 0,
   },
 });

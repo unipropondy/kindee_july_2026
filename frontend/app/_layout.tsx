@@ -28,6 +28,7 @@ import { useColorScheme } from "@/hooks/use-color-scheme";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { useAuthStore } from "@/stores/authStore";
+import { startBackgroundPrinterPoller } from "../services/BackgroundPrinterPoller";
 import { useRouter, useSegments, Slot } from "expo-router";
 import * as SystemUI from "expo-system-ui";
 import { Theme } from "@/constants/theme";
@@ -282,6 +283,7 @@ export default function RootLayout() {
       }
     };
     warmupAPI();
+    startBackgroundPrinterPoller();
   }, []);
 
   const [fontsLoaded, fontError] = useFonts({

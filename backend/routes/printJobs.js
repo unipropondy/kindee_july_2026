@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { getPool, sql } = require('../config/db');
+const { poolPromise, sql } = require('../config/db');
 
 // Middleware to authenticate the print bridge requests
 const authenticateBridge = async (req, res, next) => {
@@ -40,7 +40,7 @@ const normalizeIp = (ip) => {
 // GET /api/print-jobs/bridge-status - Check if print bridge is active/online
 router.get('/bridge-status', async (req, res) => {
   try {
-    const pool = getPool();
+    const pool = await poolPromise;
     const result = await pool.request().query(`
       SELECT DATEDIFF(SECOND, LastBridgeHeartbeat, GETDATE()) AS SecondsSinceHeartbeat 
       FROM CompanySettings 
@@ -63,49 +63,54 @@ router.get('/bridge-status', async (req, res) => {
 router.get('/pending', authenticateBridge, async (req, res) => {
   lastBridgeActivity = Date.now();
   lastBridgeIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
-  const pool = getPool();
-
-  // Persist heartbeat in DB to support multi-instance servers/restarts
+  
   try {
-    await pool.request().query("UPDATE CompanySettings SET LastBridgeHeartbeat = GETDATE() WHERE Id = '1'");
-  } catch (dbErr) {
-    console.error('Failed to save bridge heartbeat in database:', dbErr.message);
-  }
+    const pool = await poolPromise;
 
-  const transaction = new sql.Transaction(pool);
-
-  try {
-    await transaction.begin();
-    
-    // Select pending jobs
-    const selectReq = new sql.Request(transaction);
-    const result = await selectReq
-      .input('StoreId', sql.NVarChar(50), req.storeId)
-      .query(`
-        SELECT JobId, StoreId, PrinterName, PrinterIp, PrinterPort, Content, Status, Attempts
-        FROM PrintJobQueue
-        WHERE StoreId = @StoreId AND Status = 'PENDING'
-        ORDER BY CreatedOn ASC
-      `);
-
-    const jobs = result.recordset || [];
-
-    if (jobs.length > 0) {
-      // Mark them as PROCESSING
-      const jobIds = jobs.map(j => `'${j.JobId}'`).join(',');
-      const updateReq = new sql.Request(transaction);
-      await updateReq.query(`
-        UPDATE PrintJobQueue
-        SET Status = 'PROCESSING', ProcessedOn = GETDATE(), Attempts = Attempts + 1
-        WHERE JobId IN (${jobIds})
-      `);
+    // Persist heartbeat in DB to support multi-instance servers/restarts
+    try {
+      await pool.request().query("UPDATE CompanySettings SET LastBridgeHeartbeat = GETDATE() WHERE Id = '1'");
+    } catch (dbErr) {
+      console.error('Failed to save bridge heartbeat in database:', dbErr.message);
     }
 
-    await transaction.commit();
-    res.json({ success: true, data: jobs });
+    const transaction = new sql.Transaction(pool);
+    await transaction.begin();
+    
+    try {
+      // Select pending jobs
+      const selectReq = new sql.Request(transaction);
+      const result = await selectReq
+        .input('StoreId', sql.NVarChar(50), req.storeId)
+        .query(`
+          SELECT JobId, StoreId, PrinterName, PrinterIp, PrinterPort, Content, Status, Attempts
+          FROM PrintJobQueue
+          WHERE StoreId = @StoreId AND Status = 'PENDING'
+          ORDER BY CreatedOn ASC
+        `);
+
+      const jobs = result.recordset || [];
+
+      if (jobs.length > 0) {
+        // Mark them as PROCESSING
+        const jobIds = jobs.map(j => `'${j.JobId}'`).join(',');
+        const updateReq = new sql.Request(transaction);
+        await updateReq.query(`
+          UPDATE PrintJobQueue
+          SET Status = 'PROCESSING', ProcessedOn = GETDATE(), Attempts = Attempts + 1
+          WHERE JobId IN (${jobIds})
+        `);
+      }
+
+      await transaction.commit();
+      res.json({ success: true, data: jobs });
+
+    } catch (innerErr) {
+      try { await transaction.rollback(); } catch (e) {}
+      throw innerErr;
+    }
 
   } catch (err) {
-    try { await transaction.rollback(); } catch (e) {}
     console.error('Error fetching pending print jobs:', err);
     res.status(500).json({ success: false, error: err.message });
   }
@@ -115,7 +120,7 @@ router.get('/pending', authenticateBridge, async (req, res) => {
 router.post('/:jobId/complete', authenticateBridge, async (req, res) => {
   try {
     const { jobId } = req.params;
-    const pool = getPool();
+    const pool = await poolPromise;
     
     await pool.request()
       .input('JobId', sql.UniqueIdentifier, jobId)
@@ -137,7 +142,7 @@ router.post('/:jobId/failed', authenticateBridge, async (req, res) => {
   try {
     const { jobId } = req.params;
     const { errorMessage } = req.body;
-    const pool = getPool();
+    const pool = await poolPromise;
 
     await pool.request()
       .input('JobId', sql.UniqueIdentifier, jobId)
@@ -154,6 +159,7 @@ router.post('/:jobId/failed', authenticateBridge, async (req, res) => {
     res.status(500).json({ success: false, error: err.message });
   }
 });
+
 // 5. POST /api/print-jobs - Queue a new print job from the frontend Web version
 router.post('/', authenticateBridge, async (req, res) => {
   try {
@@ -164,7 +170,7 @@ router.post('/', authenticateBridge, async (req, res) => {
       return res.status(400).json({ success: false, error: 'Missing required fields: printerType and content' });
     }
 
-    const pool = getPool();
+    const pool = await poolPromise;
 
     // Resolve Printer IP and Name from PrintMaster
     let printerIp = '';
@@ -243,7 +249,7 @@ router.post('/', authenticateBridge, async (req, res) => {
 router.get('/status/:jobId', async (req, res) => {
   try {
     const { jobId } = req.params;
-    const pool = getPool();
+    const pool = await poolPromise;
     const result = await pool.request()
       .input('JobId', sql.UniqueIdentifier, jobId)
       .query(`
@@ -262,4 +268,3 @@ router.get('/status/:jobId', async (req, res) => {
 });
 
 module.exports = router;
-

@@ -2718,30 +2718,23 @@ export default function SummaryScreen() {
                   Select a saved promo code or search/type to apply.
                 </Text>
 
-                <TextInput
-                  style={[
-                    styles.searchInput,
-                    {
-                      width: "100%",
-                      marginTop: 5,
-                      marginBottom: 15,
-                      backgroundColor: Theme.bgInput,
-                      borderWidth: 1,
-                      borderColor: Theme.border,
-                      borderRadius: 12,
-                      padding: 12,
-                      fontFamily: Fonts.medium,
-                      fontSize: 16,
-                      color: Theme.textPrimary,
-                    },
-                  ]}
-                  placeholder="Search promo or type code manually..."
-                  placeholderTextColor={Theme.textMuted}
-                  value={promoCodeInput}
-                  onChangeText={setPromoCodeInput}
-                  autoCapitalize="characters"
-                  autoFocus
-                />
+                <View style={[styles.searchWrap, { width: "100%", marginTop: 5, marginBottom: 15 }]}>
+                  <Ionicons name="search-outline" size={20} color={Theme.textMuted} />
+                  <TextInput
+                    style={styles.searchInput}
+                    placeholder="Search promo or type code manually..."
+                    placeholderTextColor={Theme.textMuted}
+                    value={promoCodeInput}
+                    onChangeText={setPromoCodeInput}
+                    autoCapitalize="characters"
+                    autoFocus
+                  />
+                  {promoCodeInput.length > 0 && (
+                    <TouchableOpacity onPress={() => setPromoCodeInput("")}>
+                      <Ionicons name="close-circle" size={20} color={Theme.textMuted} />
+                    </TouchableOpacity>
+                  )}
+                </View>
 
                 {loadingPromos ? (
                   <ActivityIndicator size="small" color={Theme.primary} style={{ marginVertical: 20 }} />
@@ -2920,28 +2913,24 @@ export default function SummaryScreen() {
                   Link a member number or name to award reward wallet points.
                 </Text>
 
-                <TextInput
-                  style={[
-                    styles.searchInput,
-                    {
-                      width: "100%",
-                      marginTop: 5,
-                      marginBottom: 15,
-                      backgroundColor: Theme.bgInput,
-                      borderWidth: 1,
-                      borderColor: Theme.border,
-                      borderRadius: 12,
-                      padding: 12,
-                      fontFamily: Fonts.medium,
-                      fontSize: 16,
-                      color: Theme.textPrimary,
-                    },
-                  ]}
-                  placeholder="Enter phone or customer name..."
-                  placeholderTextColor={Theme.textMuted}
-                  value={rewardSearchText}
-                  onChangeText={handleRewardSearch}
-                />
+                <View style={[styles.searchWrap, { width: "100%", marginTop: 5, marginBottom: 15 }]}>
+                  <Ionicons name="search-outline" size={20} color={Theme.textMuted} />
+                  <TextInput
+                    style={styles.searchInput}
+                    placeholder="Enter phone or customer name..."
+                    placeholderTextColor={Theme.textMuted}
+                    value={rewardSearchText}
+                    onChangeText={handleRewardSearch}
+                  />
+                  {rewardSearchText.length > 0 && (
+                    <TouchableOpacity onPress={() => {
+                      setRewardSearchText("");
+                      setRewardSearchResults([]);
+                    }}>
+                      <Ionicons name="close-circle" size={20} color={Theme.textMuted} />
+                    </TouchableOpacity>
+                  )}
+                </View>
 
                 {isSearchingRewards ? (
                   <ActivityIndicator size="small" color={Theme.primary} style={{ marginVertical: 20 }} />

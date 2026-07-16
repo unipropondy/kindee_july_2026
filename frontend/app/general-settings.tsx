@@ -98,6 +98,7 @@ export default function GeneralSettingsScreen() {
   const [SVCIdentification, setSVCIdentification] = useState(settings.SVCIdentification !== undefined ? settings.SVCIdentification : true);
   const [enableKDSPrint, setEnableKDSPrint] = useState(settings.enableKDSPrint !== undefined ? settings.enableKDSPrint : true);
   const [enableCombo, setEnableCombo] = useState(settings.enableCombo !== undefined ? settings.enableCombo : true);
+  const [enableComboPrint, setEnableComboPrint] = useState(settings.enableComboPrint !== undefined ? settings.enableComboPrint : true);
   const [showLoyalty, setShowLoyalty] = useState(settings.showLoyalty !== undefined ? settings.showLoyalty : true);
   const [showRewardPoints, setShowRewardPoints] = useState(settings.showRewardPoints !== undefined ? settings.showRewardPoints : true);
   const [showPromoCode, setShowPromoCode] = useState(settings.showPromoCode !== undefined ? settings.showPromoCode : true);
@@ -122,6 +123,7 @@ export default function GeneralSettingsScreen() {
     setSVCIdentification(settings.SVCIdentification !== undefined ? settings.SVCIdentification : true);
     setEnableKDSPrint(settings.enableKDSPrint !== undefined ? settings.enableKDSPrint : true);
     setEnableCombo(settings.enableCombo !== undefined ? settings.enableCombo : true);
+    setEnableComboPrint(settings.enableComboPrint !== undefined ? settings.enableComboPrint : true);
     setShowLoyalty(settings.showLoyalty !== undefined ? settings.showLoyalty : true);
     setShowRewardPoints(settings.showRewardPoints !== undefined ? settings.showRewardPoints : true);
     setShowPromoCode(settings.showPromoCode !== undefined ? settings.showPromoCode : true);
@@ -210,6 +212,7 @@ export default function GeneralSettingsScreen() {
       showLoyalty,
       showRewardPoints,
       showPromoCode,
+      enableComboPrint,
     });
     setSaving(false);
 
@@ -298,6 +301,13 @@ export default function GeneralSettingsScreen() {
       icon: "fast-food-outline",
       value: enableCombo,
       onToggle: setEnableCombo,
+    },
+    {
+      title: "Combo Print Feature",
+      desc: "Send sub-items in combo to their respective kitchen printers.",
+      icon: "print-outline",
+      value: enableComboPrint,
+      onToggle: setEnableComboPrint,
     },
     {
       title: "Loyalty Feature",

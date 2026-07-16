@@ -770,6 +770,22 @@ class SunmiPrinterService {
           }
         }
 
+        const comboSels = item.comboSelections || 
+          (typeof item.ComboDetailsJSON === 'string' && item.ComboDetailsJSON 
+            ? (() => { try { const p = JSON.parse(item.ComboDetailsJSON); return Array.isArray(p) ? p : p.groups; } catch { return undefined; } })() 
+            : (Array.isArray(item.ComboDetailsJSON) ? item.ComboDetailsJSON : undefined)) || [];
+        if (Array.isArray(comboSels) && comboSels.length > 0) {
+          await setSize(fontSizes.modifier);
+          for (const g of comboSels) {
+            if (Array.isArray(g.items)) {
+              for (const opt of g.items) {
+                await SunmiModule.printText(formatter.left(`  - ${opt.name}`));
+                await SunmiModule.lineWrap(1);
+              }
+            }
+          }
+        }
+
         const noteText = item.note || item.notes || item.Remarks || item.remarks;
         if (noteText) {
           await setSize(fontSizes.note);

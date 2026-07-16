@@ -1032,8 +1032,7 @@ class UniversalPrinter {
                           ${
                             hasCombo
                               ? `<div class="modifier-list">${comboSels.map((g: any) => `
-                                  <div style="font-weight: bold; margin-top: 2px; font-size: 15px; color: #555;">${g.groupName}:</div>
-                                  ${g.items?.map((opt: any) => `<span class="modifier-item" style="padding-left: 10px;">↳ ${opt.name}</span>`).join("")}
+                                  ${g.items?.map((opt: any) => `<span class="modifier-item">- ${opt.name}</span>`).join("")}
                                 `).join("")}</div>`
                               : ""
                           }
@@ -1096,8 +1095,7 @@ class UniversalPrinter {
                         ${comboSels
                           .map(
                             (g: any) => `
-                          <div style="font-weight: bold; margin-top: 2px; font-size: 15px; color: #555;">${g.groupName}:</div>
-                          ${g.items?.map((opt: any) => `<span class="modifier-item" style="padding-left: 10px;">↳ ${opt.name}</span>`).join("")}
+                          ${g.items?.map((opt: any) => `<span class="modifier-item">- ${opt.name}</span>`).join("")}
                         `,
                           )
                           .join("")}
@@ -1206,9 +1204,8 @@ class UniversalPrinter {
 
           if (item.comboSelections && item.comboSelections.length > 0) {
             item.comboSelections.forEach((g: any) => {
-              text += `[L]    ${g.groupName}:\n`;
               g.items?.forEach((opt: any) => {
-                text += `[L]      ↳ ${opt.name}\n`;
+                text += `[L]    - ${opt.name}\n`;
               });
             });
           }
@@ -1257,9 +1254,8 @@ class UniversalPrinter {
 
         if (item.comboSelections && item.comboSelections.length > 0) {
           item.comboSelections.forEach((g: any) => {
-            text += `[L]    ${g.groupName}:\n`;
             g.items?.forEach((opt: any) => {
-              text += `[L]      ↳ ${opt.name}\n`;
+              text += `[L]    - ${opt.name}\n`;
             });
           });
         }
@@ -2057,7 +2053,7 @@ class UniversalPrinter {
 
       // 2. Check enableKOT setting (same setting the cashier flow checks)
       const { useGeneralSettingsStore } = await import("../stores/generalSettingsStore");
-      const { enableKOT, enableKDSPrint } = useGeneralSettingsStore.getState().settings;
+      const { enableKOT, enableKDSPrint, enableComboPrint } = useGeneralSettingsStore.getState().settings;
       if (!enableKOT) {
         if (__DEV__) console.log("🖨️ [UniversalPrinter] KOT printing is disabled in General Settings.");
         return false;
@@ -2067,7 +2063,7 @@ class UniversalPrinter {
       const expandedItems: any[] = [];
       items.forEach((item: any) => {
         expandedItems.push(item);
-        if (item.comboSelections && item.comboSelections.length > 0) {
+        if (enableComboPrint !== false && item.comboSelections && item.comboSelections.length > 0) {
           item.comboSelections.forEach((g: any) => {
             if (Array.isArray(g.items)) {
               g.items.forEach((opt: any) => {

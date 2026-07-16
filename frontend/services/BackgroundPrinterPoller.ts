@@ -35,35 +35,49 @@ async function processJob(job: any, pollerUrl: string, token: string, storeId: s
   console.log(`[BackgroundPrinterPoller] Processing job ${jobId} to printer ${targetIp || "Sunmi"}`);
 
   try {
-    const isIp = /^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/.test(targetIp);
-    const isMac = /^(?:[0-9A-Fa-f]{2}[:-]){5}(?:[0-9A-Fa-f]{2})$/.test(targetIp);
-
-    if (isIp) {
-      console.log(`[BackgroundPrinterPoller] WiFi/LAN print to: ${targetIp}:${targetPort}`);
-      if (!ThermalPrinter || typeof ThermalPrinter.printTcp !== 'function') {
-        throw new Error("ThermalPrinter native module not available (printTcp)");
-      }
-      await ThermalPrinter.printTcp({
-        ip: targetIp,
-        port: Number(targetPort),
-        payload: content,
-        mmFeedPaper: 60,
-      });
-    } else if (isMac) {
-      console.log(`[BackgroundPrinterPoller] Bluetooth print to: ${targetIp}`);
-      if (!ThermalPrinter || typeof ThermalPrinter.printBluetooth !== 'function') {
-        throw new Error("ThermalPrinter native module not available (printBluetooth)");
-      }
-      await ThermalPrinter.printBluetooth({
-        macAddress: targetIp,
-        payload: content,
-        mmFeedPaper: 60,
-      });
+    // If running in Web environment, simulate the print for local testing/verification
+    if (Platform.OS === "web") {
+      console.log(`\n========================================`);
+      console.log(`🖨️ [Web Mock Print] SIMULATING PRINT FOR JOB: ${jobId}`);
+      console.log(`Target Printer: ${targetIp || "Sunmi Fallback"}:${targetPort}`);
+      console.log(`----------------------------------------`);
+      console.log(content);
+      console.log(`========================================\n`);
+      
+      // Artificial delay to simulate printer hardware response time
+      await new Promise(resolve => setTimeout(resolve, 500));
     } else {
-      console.log(`[BackgroundPrinterPoller] Sunmi print (direct raw KOT)`);
-      const success = await SunmiPrinterService.printRawKOT(content);
-      if (!success) {
-        throw new Error("SunmiPrinterService.printRawKOT returned false");
+      // Actual hardware print on Android
+      const isIp = /^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/.test(targetIp);
+      const isMac = /^(?:[0-9A-Fa-f]{2}[:-]){5}(?:[0-9A-Fa-f]{2})$/.test(targetIp);
+
+      if (isIp) {
+        console.log(`[BackgroundPrinterPoller] WiFi/LAN print to: ${targetIp}:${targetPort}`);
+        if (!ThermalPrinter || typeof ThermalPrinter.printTcp !== 'function') {
+          throw new Error("ThermalPrinter native module not available (printTcp)");
+        }
+        await ThermalPrinter.printTcp({
+          ip: targetIp,
+          port: Number(targetPort),
+          payload: content,
+          mmFeedPaper: 60,
+        });
+      } else if (isMac) {
+        console.log(`[BackgroundPrinterPoller] Bluetooth print to: ${targetIp}`);
+        if (!ThermalPrinter || typeof ThermalPrinter.printBluetooth !== 'function') {
+          throw new Error("ThermalPrinter native module not available (printBluetooth)");
+      }
+        await ThermalPrinter.printBluetooth({
+          macAddress: targetIp,
+          payload: content,
+          mmFeedPaper: 60,
+        });
+      } else {
+        console.log(`[BackgroundPrinterPoller] Sunmi print (direct raw KOT)`);
+        const success = await SunmiPrinterService.printRawKOT(content);
+        if (!success) {
+          throw new Error("SunmiPrinterService.printRawKOT returned false");
+        }
       }
     }
 
@@ -109,11 +123,6 @@ async function processJob(job: any, pollerUrl: string, token: string, storeId: s
 }
 
 async function pollOnce() {
-  // CRITICAL: Only run the background print poller on native Android platform
-  if (Platform.OS !== "android") {
-    return;
-  }
-
   if (isPolling) return;
   
   const settings = useGeneralSettingsStore.getState().settings;
@@ -162,10 +171,6 @@ async function pollOnce() {
 }
 
 export function startBackgroundPrinterPoller() {
-  if (Platform.OS !== "android") {
-    return;
-  }
-
   if (pollingInterval) {
     console.log("[BackgroundPrinterPoller] Poller already running.");
     return;

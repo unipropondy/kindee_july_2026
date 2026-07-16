@@ -304,4 +304,36 @@ router.get("/permissions/:userGroupCode", async (req, res) => {
   }
 });
 
+/* ================= AUTH - CHANGE PASSWORD ================= */
+router.post("/change-password", async (req, res) => {
+  try {
+    const { userId, newPassword } = req.body;
+
+    if (!userId || !newPassword) {
+      return res.status(400).json({ success: false, message: "Missing required fields." });
+    }
+
+    const pool = await poolPromise;
+    const userRes = await pool.request()
+      .input("UserId", sql.NVarChar, userId)
+      .query("SELECT * FROM [dbo].[UserMaster] WHERE UserId = @UserId");
+
+    if (userRes.recordset.length === 0) {
+      return res.status(404).json({ success: false, message: "User not found." });
+    }
+
+    // Hash new password and save it directly
+    const hashedNewPassword = await bcrypt.hash(newPassword, 10);
+    await pool.request()
+      .input("UserId", userId)
+      .input("HashedPassword", hashedNewPassword)
+      .query("UPDATE [dbo].[UserMaster] SET UserPassword = @HashedPassword WHERE UserId = @UserId");
+
+    res.json({ success: true, message: "Password updated successfully." });
+  } catch (err) {
+    console.error("CHANGE PASSWORD ERROR:", err);
+    res.status(500).json({ success: false, message: "Server error." });
+  }
+});
+
 module.exports = router;

@@ -114,6 +114,53 @@ export default function GeneralSettingsScreen() {
   const [pendingCashDrawerValue, setPendingCashDrawerValue] = useState<boolean | null>(null);
   const [saving, setSaving] = useState(false);
 
+  // Change Password States
+  const [showChangePasswordModal, setShowChangePasswordModal] = useState(false);
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [changingPassword, setChangingPassword] = useState(false);
+
+  const handleChangePasswordSubmit = async () => {
+    if (!newPassword || !confirmPassword) {
+      showToast({ type: "warning", message: "Please fill all fields" });
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      showToast({ type: "warning", message: "New passwords do not match" });
+      return;
+    }
+    if (!user?.userId) {
+      showToast({ type: "error", message: "User not logged in" });
+      return;
+    }
+
+    setChangingPassword(true);
+    try {
+      const res = await fetch(`${API_URL}/api/auth/change-password`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userId: user.userId,
+          newPassword,
+        }),
+      });
+
+      const data = await res.json();
+      if (res.ok && data.success) {
+        showToast({ type: "success", message: "Password updated successfully!" });
+        setShowChangePasswordModal(false);
+        setNewPassword("");
+        setConfirmPassword("");
+      } else {
+        Alert.alert("Failed", data.message || "Failed to update password");
+      }
+    } catch (err) {
+      Alert.alert("Error", "Could not connect to server to change password");
+    } finally {
+      setChangingPassword(false);
+    }
+  };
+
   useEffect(() => {
     fetchSettings();
   }, []);
@@ -822,4 +869,23 @@ const styles = StyleSheet.create({
     color: Theme.textPrimary,
     outlineWidth: 0,
   },
+  changePasswordBtn: {
+    height: 44,
+    backgroundColor: Theme.primary,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 8,
+    shadowColor: Theme.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 6,
+    elevation: 3,
+  },
+  changePasswordBtnText: {
+    fontSize: 14,
+    fontFamily: Fonts.bold,
+    color: "#fff",
+  },
 });
+

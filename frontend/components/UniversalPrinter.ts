@@ -936,9 +936,9 @@ class UniversalPrinter {
           }
           
           .modifier-item {
-            font-size: 16px;
-            font-weight: 600;
-            color: #333;
+            font-size: 22px;
+            font-weight: 700;
+            color: #000;
             display: block;
           }
           
@@ -1205,7 +1205,7 @@ class UniversalPrinter {
           if (item.comboSelections && item.comboSelections.length > 0) {
             item.comboSelections.forEach((g: any) => {
               g.items?.forEach((opt: any) => {
-                text += `[L]    - ${opt.name}\n`;
+                text += `[L]<font size='big'>    - ${opt.name}</font>\n`;
               });
             });
           }
@@ -1255,7 +1255,7 @@ class UniversalPrinter {
         if (item.comboSelections && item.comboSelections.length > 0) {
           item.comboSelections.forEach((g: any) => {
             g.items?.forEach((opt: any) => {
-              text += `[L]    - ${opt.name}\n`;
+              text += `[L]<font size='big'>    - ${opt.name}</font>\n`;
             });
           });
         }

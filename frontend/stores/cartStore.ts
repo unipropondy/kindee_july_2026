@@ -973,7 +973,7 @@ export const useCartStore = create<CartState>()(
           const sourceItem = currentCart.find((i) => i.lineItemId === lineItemId);
           if (!sourceItem) return state;
 
-          const base = sourceItem.basePrice || sourceItem.price || 0;
+          const base = sourceItem.basePrice !== undefined && sourceItem.basePrice !== null ? sourceItem.basePrice : (sourceItem.price || 0);
           const extra = modifiers.reduce((sum, m) => sum + (m.Price || 0), 0);
           const newPrice = base + extra;
 

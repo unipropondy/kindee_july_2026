@@ -166,7 +166,20 @@ export function useGlobalSocketSync() {
         );
 
         if (computedStatus === "EMPTY" && tableId) {
-          useCartStore.getState().clearTableSession(tableId);
+          const cartStore = useCartStore.getState();
+          const currentContextId = cartStore.currentContextId;
+          const currentCart = currentContextId ? (cartStore.carts[currentContextId] || []) : [];
+          const hasNewItems = currentCart.some((item: any) => item.status === "NEW" || !item.status);
+          const currentOrder = useOrderContextStore.getState().currentOrder;
+          const isActiveTable = currentOrder?.tableId === tableId;
+
+          if (isActiveTable && hasNewItems) {
+            if (__DEV__) {
+              console.log(`🛡️ [Socket-Global] Blocked clearing active table ${tableId} because it has unsent items in the cart.`);
+            }
+          } else {
+            cartStore.clearTableSession(tableId);
+          }
         }
       }
 

@@ -2,6 +2,7 @@ import ThermalPrinter from "react-native-thermal-printer";
 import { useGeneralSettingsStore } from "../stores/generalSettingsStore";
 import SunmiPrinterService from "../components/SunmiPrinterService";
 import { API_URL } from "../constants/Config";
+import { Platform } from "react-native";
 
 let isPolling = false;
 let pollingInterval: any = null;
@@ -39,6 +40,9 @@ async function processJob(job: any, pollerUrl: string, token: string, storeId: s
 
     if (isIp) {
       console.log(`[BackgroundPrinterPoller] WiFi/LAN print to: ${targetIp}:${targetPort}`);
+      if (!ThermalPrinter || typeof ThermalPrinter.printTcp !== 'function') {
+        throw new Error("ThermalPrinter native module not available (printTcp)");
+      }
       await ThermalPrinter.printTcp({
         ip: targetIp,
         port: Number(targetPort),
@@ -47,6 +51,9 @@ async function processJob(job: any, pollerUrl: string, token: string, storeId: s
       });
     } else if (isMac) {
       console.log(`[BackgroundPrinterPoller] Bluetooth print to: ${targetIp}`);
+      if (!ThermalPrinter || typeof ThermalPrinter.printBluetooth !== 'function') {
+        throw new Error("ThermalPrinter native module not available (printBluetooth)");
+      }
       await ThermalPrinter.printBluetooth({
         macAddress: targetIp,
         payload: content,
@@ -73,14 +80,12 @@ async function processJob(job: any, pollerUrl: string, token: string, storeId: s
     });
     if (!res.ok) {
       console.error(`[BackgroundPrinterPoller] Failed to mark job ${jobId} as complete: ${res.statusText}`);
-      // Remove from processed sets so it can retry if not updated on backend
       processedJobs.delete(jobId);
     }
   } catch (err: any) {
     const errorMsg = err.message || "Silent print failed";
     console.error(`[BackgroundPrinterPoller] Printing job ${jobId} failed: ${errorMsg}`);
     
-    // Remove from local processed sets so it can retry
     processedJobs.delete(jobId);
 
     // Report failure to backend
@@ -104,6 +109,11 @@ async function processJob(job: any, pollerUrl: string, token: string, storeId: s
 }
 
 async function pollOnce() {
+  // CRITICAL: Only run the background print poller on native Android platform
+  if (Platform.OS !== "android") {
+    return;
+  }
+
   if (isPolling) return;
   
   const settings = useGeneralSettingsStore.getState().settings;
@@ -115,7 +125,6 @@ async function pollOnce() {
 
   let pollerUrl = settings.printPollerUrl || "https://qr-kindee-production.up.railway.app";
   
-  // In development/local testing, automatically redirect to local QR backend (port 5000)
   if (__DEV__ && (pollerUrl.includes("railway.app") || !pollerUrl)) {
     pollerUrl = API_URL.replace(":3000", ":5000");
   }
@@ -141,7 +150,6 @@ async function pollOnce() {
     if (payload.success && Array.isArray(payload.data) && payload.data.length > 0) {
       console.log(`[BackgroundPrinterPoller] Found ${payload.data.length} pending print jobs.`);
       
-      // Process jobs sequentially to avoid overlapping print streams
       for (const job of payload.data) {
         await processJob(job, pollerUrl, token, storeId);
       }
@@ -154,6 +162,10 @@ async function pollOnce() {
 }
 
 export function startBackgroundPrinterPoller() {
+  if (Platform.OS !== "android") {
+    return;
+  }
+
   if (pollingInterval) {
     console.log("[BackgroundPrinterPoller] Poller already running.");
     return;
@@ -161,10 +173,7 @@ export function startBackgroundPrinterPoller() {
 
   console.log("[BackgroundPrinterPoller] Starting print poller...");
   
-  // Initial poll
   pollOnce();
-
-  // Run poll every 5 seconds
   pollingInterval = setInterval(pollOnce, 5000);
 }
 

@@ -1,25 +1,64 @@
 import ThermalPrinter from "react-native-thermal-printer";
 import { useGeneralSettingsStore } from "../stores/generalSettingsStore";
+import SunmiPrinterService from "../components/SunmiPrinterService";
+import { API_URL } from "../constants/Config";
 
 let isPolling = false;
 let pollingInterval: any = null;
+const processedJobs = new Set<string>();
+
+// Keep memory bounded by clearing the processed jobs cache if it gets too large
+function cleanProcessedJobsCache() {
+  if (processedJobs.size > 1000) {
+    processedJobs.clear();
+  }
+}
 
 async function processJob(job: any, pollerUrl: string, token: string, storeId: string) {
-  const targetIp = job.PrinterIp || job.PrinterIP;
+  const targetIp = (job.PrinterIp || job.PrinterIP || "").trim();
   const targetPort = job.PrinterPort || 9100;
   const content = job.Content || "";
   const jobId = job.JobId;
 
-  console.log(`[BackgroundPrinterPoller] Processing job ${jobId} to printer ${targetIp}:${targetPort}`);
+  if (!jobId) return;
+
+  // Prevent duplicate execution if job is already processed/processing
+  if (processedJobs.has(jobId)) {
+    console.log(`[BackgroundPrinterPoller] Duplicate print job ${jobId} blocked.`);
+    return;
+  }
+
+  processedJobs.add(jobId);
+  cleanProcessedJobsCache();
+
+  console.log(`[BackgroundPrinterPoller] Processing job ${jobId} to printer ${targetIp || "Sunmi"}`);
 
   try {
-    // Print the KOT/receipt silently via TCP socket using ThermalPrinter
-    await ThermalPrinter.printTcp({
-      ip: targetIp,
-      port: Number(targetPort),
-      payload: content,
-      mmFeedPaper: 60,
-    });
+    const isIp = /^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/.test(targetIp);
+    const isMac = /^(?:[0-9A-Fa-f]{2}[:-]){5}(?:[0-9A-Fa-f]{2})$/.test(targetIp);
+
+    if (isIp) {
+      console.log(`[BackgroundPrinterPoller] WiFi/LAN print to: ${targetIp}:${targetPort}`);
+      await ThermalPrinter.printTcp({
+        ip: targetIp,
+        port: Number(targetPort),
+        payload: content,
+        mmFeedPaper: 60,
+      });
+    } else if (isMac) {
+      console.log(`[BackgroundPrinterPoller] Bluetooth print to: ${targetIp}`);
+      await ThermalPrinter.printBluetooth({
+        macAddress: targetIp,
+        payload: content,
+        mmFeedPaper: 60,
+      });
+    } else {
+      console.log(`[BackgroundPrinterPoller] Sunmi print (direct raw KOT)`);
+      const success = await SunmiPrinterService.printRawKOT(content);
+      if (!success) {
+        throw new Error("SunmiPrinterService.printRawKOT returned false");
+      }
+    }
 
     console.log(`[BackgroundPrinterPoller] Successfully printed job ${jobId}. Reporting to backend...`);
 
@@ -34,10 +73,15 @@ async function processJob(job: any, pollerUrl: string, token: string, storeId: s
     });
     if (!res.ok) {
       console.error(`[BackgroundPrinterPoller] Failed to mark job ${jobId} as complete: ${res.statusText}`);
+      // Remove from processed sets so it can retry if not updated on backend
+      processedJobs.delete(jobId);
     }
   } catch (err: any) {
-    const errorMsg = err.message || "ThermalPrinter printTcp failed";
+    const errorMsg = err.message || "Silent print failed";
     console.error(`[BackgroundPrinterPoller] Printing job ${jobId} failed: ${errorMsg}`);
+    
+    // Remove from local processed sets so it can retry
+    processedJobs.delete(jobId);
 
     // Report failure to backend
     try {
@@ -69,7 +113,13 @@ async function pollOnce() {
 
   isPolling = true;
 
-  const pollerUrl = settings.printPollerUrl || "https://kindeejuly2026-production.up.railway.app";
+  let pollerUrl = settings.printPollerUrl || "https://qr-kindee-production.up.railway.app";
+  
+  // In development/local testing, automatically redirect to local QR backend (port 5000)
+  if (__DEV__ && (pollerUrl.includes("railway.app") || !pollerUrl)) {
+    pollerUrl = API_URL.replace(":3000", ":5000");
+  }
+
   const token = settings.printPollerToken || "unipro-pos-bridge-token-2026";
   const storeId = settings.printPollerStoreId || "1";
 
@@ -82,7 +132,7 @@ async function pollOnce() {
     });
 
     if (!res.ok) {
-      console.warn(`[BackgroundPrinterPoller] Failed to fetch pending jobs: ${res.statusText}`);
+      console.warn(`[BackgroundPrinterPoller] Failed to fetch pending jobs from ${pollerUrl}: ${res.statusText}`);
       isPolling = false;
       return;
     }

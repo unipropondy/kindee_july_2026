@@ -805,6 +805,97 @@ class SunmiPrinterService {
       return false;
     }
   }
+
+  static async printRawKOT(content: string): Promise<boolean> {
+    try {
+      if (!SunmiModule) {
+        const initialized = await this.init();
+        if (!initialized) return false;
+      }
+      
+      await SunmiPrinterManager.init();
+      const formatter = SunmiPrinterManager.getFormatter();
+      const totalWidth = formatter.getLineWidth(); // 32 for 58mm, 48 for 80mm
+      
+      const lines = content.split(/\r?\n/);
+      
+      for (const line of lines) {
+        if (!line && line !== "") continue;
+        
+        let processedLine = line;
+        
+        // Check for alignment prefix
+        let align: 'left' | 'center' | 'right' = 'left';
+        if (processedLine.startsWith('[C]')) {
+          align = 'center';
+          processedLine = processedLine.substring(3);
+        } else if (processedLine.startsWith('[L]')) {
+          align = 'left';
+          processedLine = processedLine.substring(3);
+        } else if (processedLine.startsWith('[R]')) {
+          align = 'right';
+          processedLine = processedLine.substring(3);
+        }
+        
+        // Check for bold and font size tags
+        let isBold = false;
+        let isBig = false;
+        
+        if (/<B>/i.test(processedLine)) {
+          isBold = true;
+          processedLine = processedLine.replace(/<\/?B>/gi, '');
+        }
+        if (/<font size='big'>/i.test(processedLine) || /<font size="big">/i.test(processedLine)) {
+          isBig = true;
+          processedLine = processedLine.replace(/<font size='big'>/gi, '').replace(/<font size="big">/gi, '').replace(/<\/font>/gi, '');
+        }
+        
+        // Strip any remaining font normal or font close tags
+        processedLine = processedLine.replace(/<font size='normal'>/gi, '')
+                                     .replace(/<font size="normal">/gi, '')
+                                     .replace(/<\/font>/gi, '')
+                                     .replace(/<\/B>/gi, '');
+                                     
+        // Align using space padding
+        let textToPrint = processedLine;
+        if (align === 'center') {
+          const padding = Math.max(0, Math.floor((totalWidth - textToPrint.length) / 2));
+          textToPrint = " ".repeat(padding) + textToPrint;
+        } else if (align === 'right') {
+          const padding = Math.max(0, totalWidth - textToPrint.length);
+          textToPrint = " ".repeat(padding) + textToPrint;
+        }
+        
+        // Print it
+        try {
+          if (SunmiModule.setFontSize) {
+            await SunmiModule.setFontSize(isBig ? 32 : 24);
+          } else if (SunmiModule.setTextSize) {
+            await SunmiModule.setTextSize(isBig ? 32 : 24);
+          }
+          if (SunmiModule.setBold) {
+            await SunmiModule.setBold(isBold);
+          }
+        } catch (_) {}
+        
+        await SunmiModule.printText(textToPrint + "\n");
+      }
+      
+      // Reset format and cut/wrap
+      try {
+        if (SunmiModule.setFontSize) await SunmiModule.setFontSize(24);
+        else if (SunmiModule.setTextSize) await SunmiModule.setTextSize(24);
+        if (SunmiModule.setBold) await SunmiModule.setBold(false);
+      } catch (_) {}
+      
+      await SunmiModule.lineWrap(3);
+      await SunmiModule.cutPaper();
+      return true;
+    } catch (err) {
+      console.warn("❌ Sunmi printRawKOT error:", err);
+      return false;
+    }
+  }
 }
 
 export default SunmiPrinterService;

@@ -52,7 +52,7 @@ export const useGeneralSettingsStore = create<GeneralSettingsState>()(
         showPromoCode: true,
         enableComboPrint: true,
         enablePrintPoller: true,
-        printPollerUrl: "https://kindeejuly2026-production.up.railway.app",
+        printPollerUrl: "https://qr-kindee-production.up.railway.app",
         printPollerToken: "unipro-pos-bridge-token-2026",
         printPollerStoreId: "1",
       },

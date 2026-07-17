@@ -179,32 +179,19 @@ router.post('/', authenticateBridge, async (req, res) => {
 
     if (pType === 2) {
       // Kitchen Printer
-      const codeVal = parseInt(kitchenTypeValue);
-      const appSettingsRes = await pool.request().query("SELECT TOP 1 EnableBeveragePrinter, EnableMainMenuPrinter, EnableThaiPrinter FROM AppSettings");
-      const asRow = appSettingsRes.recordset[0] || {};
-      const enableBev = asRow.EnableBeveragePrinter !== false && asRow.EnableBeveragePrinter !== 0;
-      const enableMain = asRow.EnableMainMenuPrinter !== false && asRow.EnableMainMenuPrinter !== 0;
-      const enableThai = asRow.EnableThaiPrinter !== false && asRow.EnableThaiPrinter !== 0;
-
-      let isPrinterEnabled = true;
-      if (codeVal === 5) isPrinterEnabled = enableBev;
-      else if (codeVal === 2) isPrinterEnabled = enableMain;
-      else if (codeVal === 11) isPrinterEnabled = enableThai;
-
-      if (!isPrinterEnabled) {
-        console.log(`📡 [printJobs] Skipping print job for KitchenTypeValue ${kitchenTypeValue} because it is disabled in AppSettings.`);
-        return res.json({ success: true, message: 'Print job skipped (printer disabled)' });
-      }
-
       const checkPrinter = await pool.request()
         .input('KitchenTypeValue', sql.NVarChar(50), kitchenTypeValue ? String(kitchenTypeValue) : '0')
         .query(`
-          SELECT IsActive, PrinterIP, PrinterName 
+          SELECT IsActive, IsEnabled, PrinterIP, PrinterName 
           FROM PrintMaster 
           WHERE PrinterType = 2 AND CAST(KitchenTypeValue AS VARCHAR(50)) = CAST(@KitchenTypeValue AS VARCHAR(50)) AND IsActive = 1
         `);
       if (checkPrinter.recordset.length > 0) {
         const kp = checkPrinter.recordset[0];
+        if (kp.IsEnabled === false || kp.IsEnabled === 0) {
+          console.log(`📡 [printJobs] Skipping print job for KitchenTypeValue ${kitchenTypeValue} because it is disabled.`);
+          return res.json({ success: true, message: 'Print job skipped (printer disabled)' });
+        }
         printerIp = kp.PrinterIP || '';
         printerName = kp.PrinterName || '';
       }

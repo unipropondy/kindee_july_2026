@@ -155,6 +155,18 @@ router.get("/kitchen-printers", async (req, res) => {
   try {
     const pool = await poolPromise;
 
+    // Self-healing migration for IsEnabled column
+    try {
+      await pool.request().query(`
+        IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('PrintMaster') AND name = 'IsEnabled')
+        BEGIN
+          ALTER TABLE PrintMaster ADD IsEnabled BIT NOT NULL DEFAULT 1;
+        END
+      `);
+    } catch (e) {
+      console.warn("Could not alter PrintMaster table:", e);
+    }
+
     // 1. Self-healing check for Cashier Printer (PrinterType = 1)
     const cashierCheck = await pool.request()
       .query("SELECT COUNT(*) as count FROM PrintMaster WHERE PrinterType = 1 AND IsActive = 1");
@@ -208,7 +220,7 @@ router.get("/kitchen-printers", async (req, res) => {
 
     // 4. Fetch all active printers from PrintMaster
     const printersResult = await pool.request().query(`
-      SELECT PrinterId, KitchenTypeValue, KitchenTypeName, PrinterPath, PrinterType 
+      SELECT PrinterId, KitchenTypeValue, KitchenTypeName, PrinterPath, PrinterType, IsEnabled 
       FROM PrintMaster 
       WHERE IsActive = 1
     `);
@@ -218,15 +230,24 @@ router.get("/kitchen-printers", async (req, res) => {
 
     // Add Cashier printer (PrinterType = 1)
     const cashierPrinter = allPrinters.find(p => p.PrinterType === 1);
-    if (cashierPrinter) responsePrinters.push(cashierPrinter);
+    if (cashierPrinter) {
+      cashierPrinter.IsEnabled = cashierPrinter.IsEnabled !== undefined ? cashierPrinter.IsEnabled : 1;
+      responsePrinters.push(cashierPrinter);
+    }
 
     // Add TakeAway printer (PrinterType = 3)
     const takeawayPrinter = allPrinters.find(p => p.PrinterType === 3);
-    if (takeawayPrinter) responsePrinters.push(takeawayPrinter);
+    if (takeawayPrinter) {
+      takeawayPrinter.IsEnabled = takeawayPrinter.IsEnabled !== undefined ? takeawayPrinter.IsEnabled : 1;
+      responsePrinters.push(takeawayPrinter);
+    }
 
     // Add KDS printer (PrinterType = 4)
     const kdsPrinter = allPrinters.find(p => p.PrinterType === 4);
-    if (kdsPrinter) responsePrinters.push(kdsPrinter);
+    if (kdsPrinter) {
+      kdsPrinter.IsEnabled = kdsPrinter.IsEnabled !== undefined ? kdsPrinter.IsEnabled : 1;
+      responsePrinters.push(kdsPrinter);
+    }
 
     // Map active categories to kitchen printers (PrinterType = 2)
     const seenCodes = new Set();
@@ -245,7 +266,8 @@ router.get("/kitchen-printers", async (req, res) => {
           KitchenTypeValue: code,
           KitchenTypeName: cat.KitchenTypeName,
           PrinterPath: match.PrinterPath,
-          PrinterType: 2
+          PrinterType: 2,
+          IsEnabled: match.IsEnabled !== undefined ? (match.IsEnabled ? 1 : 0) : 1
         });
       } else {
         // Virtual record for missing printer
@@ -254,7 +276,8 @@ router.get("/kitchen-printers", async (req, res) => {
           KitchenTypeValue: code,
           KitchenTypeName: cat.KitchenTypeName,
           PrinterPath: "",
-          PrinterType: 2
+          PrinterType: 2,
+          IsEnabled: 1
         });
       }
     }
@@ -276,6 +299,7 @@ router.post("/kitchen-printers/update", async (req, res) => {
       const isGuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(targetId));
 
       const printerIp = printer.ip || "";
+      const isEnabled = printer.isEnabled !== undefined ? (printer.isEnabled ? 1 : 0) : 1;
 
       if (isGuid) {
         // Existing printer: update path and name
@@ -283,9 +307,10 @@ router.post("/kitchen-printers/update", async (req, res) => {
           .input("printerId", sql.UniqueIdentifier, targetId)
           .input("ip", sql.NVarChar, printerIp)
           .input("name", sql.NVarChar, printer.name || "Kitchen Printer")
+          .input("isEnabled", sql.Bit, isEnabled)
           .query(`
             UPDATE PrintMaster 
-            SET PrinterPath = @ip, PrinterIP = @ip, KitchenTypeName = @name, PrinterName = @name 
+            SET PrinterPath = @ip, PrinterIP = @ip, KitchenTypeName = @name, PrinterName = @name, IsEnabled = @isEnabled 
             WHERE PrinterId = @printerId
           `);
       } else if (printer.type === 2) {
@@ -294,16 +319,17 @@ router.post("/kitchen-printers/update", async (req, res) => {
           .input("name", sql.NVarChar, printer.name || "Kitchen Printer")
           .input("ip", sql.NVarChar, printerIp || "192.168.0.20")
           .input("code", sql.Int, parseInt(printer.id))
+          .input("isEnabled", sql.Bit, isEnabled)
           .query(`
             INSERT INTO PrintMaster (
               PrinterId, PrinterName, PrinterPath, PrinterIP, 
               PrinterType, PrintSection, KitchenTypeName, 
-              KitchenTypeValue, IsActive, PrintCopy
+              KitchenTypeValue, IsActive, PrintCopy, IsEnabled
             )
             VALUES (
               NEWID(), @name, @ip, @ip, 
               2, 1, @name, 
-              @code, 1, 1
+              @code, 1, 1, @isEnabled
             )
           `);
       } else {

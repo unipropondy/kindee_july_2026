@@ -239,7 +239,8 @@ export default function CompanySettingsScreen() {
           ip: kp.PrinterPath,
           type: 2,
           name: kp.KitchenTypeName,
-          printerId: kp.PrinterId
+          printerId: kp.PrinterId,
+          isEnabled: kp.IsEnabled !== 0
         }))
       ];
 
@@ -734,11 +735,29 @@ export default function CompanySettingsScreen() {
             ) : kitchenPrinters.length > 0 ? (
               kitchenPrinters.map((printer, index) => (
                 <View key={printer.KitchenTypeValue} style={styles.inputGroup}>
-                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                     <Text style={styles.inputLabel}>{printer.KitchenTypeName} Printer IP</Text>
+                    <TouchableOpacity
+                      style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}
+                      onPress={() => {
+                        const updated = [...kitchenPrinters];
+                        updated[index].IsEnabled = printer.IsEnabled === 0 ? 1 : 0;
+                        setKitchenPrinters(updated);
+                      }}
+                      activeOpacity={0.7}
+                    >
+                      <Ionicons
+                        name={printer.IsEnabled !== 0 ? "toggle" : "toggle-outline"}
+                        size={24}
+                        color={printer.IsEnabled !== 0 ? Theme.primary : Theme.textSecondary}
+                      />
+                      <Text style={{ fontSize: 12, fontFamily: Fonts.bold, color: printer.IsEnabled !== 0 ? Theme.primary : Theme.textSecondary }}>
+                        {printer.IsEnabled !== 0 ? "ON" : "OFF"}
+                      </Text>
+                    </TouchableOpacity>
                   </View>
                   <TextInput 
-                    style={styles.input}
+                    style={[styles.input, printer.IsEnabled === 0 && { opacity: 0.6, backgroundColor: '#f3f4f6' }]}
                     value={printer.PrinterPath || ''}
                     onChangeText={(val) => {
                       const updated = [...kitchenPrinters];
@@ -748,6 +767,7 @@ export default function CompanySettingsScreen() {
                     placeholder="e.g. 192.168.1.101"
                     placeholderTextColor={Theme.textMuted}
                     keyboardType="numeric"
+                    editable={printer.IsEnabled !== 0}
                   />
                 </View>
               ))

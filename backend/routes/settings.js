@@ -155,16 +155,18 @@ router.get("/kitchen-printers", async (req, res) => {
   try {
     const pool = await poolPromise;
 
-    // Self-healing migration for IsEnabled column
+    // Self-healing migration for AppSettings kitchen printer columns
     try {
       await pool.request().query(`
-        IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('PrintMaster') AND name = 'IsEnabled')
-        BEGIN
-          ALTER TABLE PrintMaster ADD IsEnabled BIT NOT NULL DEFAULT 1;
-        END
+        IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('AppSettings') AND name = 'EnableBeveragePrinter')
+          ALTER TABLE AppSettings ADD EnableBeveragePrinter BIT DEFAULT 1 WITH VALUES;
+        IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('AppSettings') AND name = 'EnableMainMenuPrinter')
+          ALTER TABLE AppSettings ADD EnableMainMenuPrinter BIT DEFAULT 1 WITH VALUES;
+        IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('AppSettings') AND name = 'EnableThaiPrinter')
+          ALTER TABLE AppSettings ADD EnableThaiPrinter BIT DEFAULT 1 WITH VALUES;
       `);
     } catch (e) {
-      console.warn("Could not alter PrintMaster table:", e);
+      console.warn("Could not alter AppSettings table for printers:", e);
     }
 
     // 1. Self-healing check for Cashier Printer (PrinterType = 1)
@@ -226,6 +228,13 @@ router.get("/kitchen-printers", async (req, res) => {
     `);
     const allPrinters = printersResult.recordset;
 
+    // Fetch AppSettings for individual kitchen printer flags
+    const appSettingsRes = await pool.request().query("SELECT TOP 1 EnableBeveragePrinter, EnableMainMenuPrinter, EnableThaiPrinter FROM AppSettings");
+    const asRow = appSettingsRes.recordset[0] || {};
+    const enableBev = asRow.EnableBeveragePrinter !== false && asRow.EnableBeveragePrinter !== 0;
+    const enableMain = asRow.EnableMainMenuPrinter !== false && asRow.EnableMainMenuPrinter !== 0;
+    const enableThai = asRow.EnableThaiPrinter !== false && asRow.EnableThaiPrinter !== 0;
+
     const responsePrinters = [];
 
     // Add Cashier printer (PrinterType = 1)
@@ -260,6 +269,11 @@ router.get("/kitchen-printers", async (req, res) => {
       seenCodes.add(code);
 
       const match = allPrinters.find(p => p.PrinterType === 2 && p.KitchenTypeValue === code);
+      let isEnabled = 1;
+      if (code === 5) isEnabled = enableBev ? 1 : 0;
+      else if (code === 2) isEnabled = enableMain ? 1 : 0;
+      else if (code === 11) isEnabled = enableThai ? 1 : 0;
+
       if (match) {
         responsePrinters.push({
           PrinterId: match.PrinterId,
@@ -267,7 +281,7 @@ router.get("/kitchen-printers", async (req, res) => {
           KitchenTypeName: cat.KitchenTypeName,
           PrinterPath: match.PrinterPath,
           PrinterType: 2,
-          IsEnabled: match.IsEnabled !== undefined ? (match.IsEnabled ? 1 : 0) : 1
+          IsEnabled: isEnabled
         });
       } else {
         // Virtual record for missing printer
@@ -277,7 +291,7 @@ router.get("/kitchen-printers", async (req, res) => {
           KitchenTypeName: cat.KitchenTypeName,
           PrinterPath: "",
           PrinterType: 2,
-          IsEnabled: 1
+          IsEnabled: isEnabled
         });
       }
     }
@@ -348,6 +362,27 @@ router.post("/kitchen-printers/update", async (req, res) => {
       }
     }
 
+    // Extract printer states and save to AppSettings table
+    const enableBeverage = printers.find(p => p.id === 5 || (p.type === 2 && String(p.name).toUpperCase().includes("BEV")))?.isEnabled;
+    const enableMainMenu = printers.find(p => p.id === 2 || (p.type === 2 && String(p.name).toUpperCase().includes("MAIN")))?.isEnabled;
+    const enableThai = printers.find(p => p.id === 11 || (p.type === 2 && String(p.name).toUpperCase().includes("THAI")))?.isEnabled;
+
+    await pool.request()
+      .input("eb", sql.Bit, enableBeverage !== undefined ? (enableBeverage ? 1 : 0) : 1)
+      .input("em", sql.Bit, enableMainMenu !== undefined ? (enableMainMenu ? 1 : 0) : 1)
+      .input("et", sql.Bit, enableThai !== undefined ? (enableThai ? 1 : 0) : 1)
+      .query(`
+        IF EXISTS (SELECT 1 FROM AppSettings)
+        BEGIN
+          UPDATE AppSettings
+          SET 
+            EnableBeveragePrinter = @eb,
+            EnableMainMenuPrinter = @em,
+            EnableThaiPrinter = @et
+        END
+      `);
+
+    invalidateCache();
     res.json({ success: true, message: "Printers updated successfully" });
   } catch (err) {
     res.status(500).json({ error: err.message });

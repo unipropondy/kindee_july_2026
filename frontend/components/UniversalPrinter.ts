@@ -1198,7 +1198,7 @@ class UniversalPrinter {
 
           if (item.modifiers && item.modifiers.length > 0) {
             item.modifiers.forEach((m: any) => {
-              text += `[L]    + ${m.ModifierName || m.name}\n`;
+              text += `[L]    <B>+ ${m.ModifierName || m.name}</B>\n`;
             });
           }
 
@@ -1248,7 +1248,7 @@ class UniversalPrinter {
 
         if (item.modifiers && item.modifiers.length > 0) {
           item.modifiers.forEach((m: any) => {
-            text += `[L]    + ${m.ModifierName || m.name}\n`;
+            text += `[L]    <B>+ ${m.ModifierName || m.name}</B>\n`;
           });
         }
 

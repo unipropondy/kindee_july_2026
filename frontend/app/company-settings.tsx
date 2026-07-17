@@ -819,7 +819,8 @@ export default function CompanySettingsScreen() {
                     editable={!!printer.IsEnabled}
                   />
                 </View>
-              })
+              );
+            })
             ) : (
               <Text style={styles.note}>No kitchen types found in database.</Text>
             )}

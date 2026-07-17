@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -12,6 +12,8 @@ import {
   KeyboardAvoidingView,
   Modal,
   Platform,
+  Animated,
+  Easing,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, FontAwesome5 } from '@expo/vector-icons';
@@ -25,6 +27,56 @@ import { useToast } from '../components/Toast';
 import { API_URL } from '@/constants/Config';
 import { useCompanySettingsStore } from '../stores/companySettingsStore';
 import { useAuthStore } from '../stores/authStore';
+
+interface CustomSwitchProps {
+  value: boolean;
+  onValueChange: (val: boolean) => void;
+}
+
+const CustomSwitch = ({ value, onValueChange }: CustomSwitchProps) => {
+  const animatedValue = useRef(new Animated.Value(value ? 1 : 0)).current;
+
+  useEffect(() => {
+    Animated.timing(animatedValue, {
+      toValue: value ? 1 : 0,
+      duration: 180,
+      easing: Easing.bezier(0.4, 0, 0.2, 1),
+      useNativeDriver: false,
+    }).start();
+  }, [value]);
+
+  const translateX = animatedValue.interpolate({
+    inputRange: [0, 1],
+    outputRange: [3, 25],
+  });
+
+  const backgroundColor = animatedValue.interpolate({
+    inputRange: [0, 1],
+    outputRange: ["#E2E8F0", Theme.primary],
+  });
+
+  return (
+    <TouchableOpacity
+      activeOpacity={0.8}
+      onPress={() => onValueChange(!value)}
+      style={styles.switchTouchArea}
+    >
+      <Animated.View
+        style={[
+          styles.switchContainer,
+          { backgroundColor }
+        ]}
+      >
+        <Animated.View
+          style={[
+            styles.switchThumb,
+            { transform: [{ translateX }] },
+          ]}
+        />
+      </Animated.View>
+    </TouchableOpacity>
+  );
+};
 
 export default function CompanySettingsScreen() {
   const { settings, loading, fetchSettings, updateSettings } = useCompanySettingsStore();
@@ -240,7 +292,7 @@ export default function CompanySettingsScreen() {
           type: 2,
           name: kp.KitchenTypeName,
           printerId: kp.PrinterId,
-          isEnabled: kp.IsEnabled !== 0
+          isEnabled: !!kp.IsEnabled
         }))
       ];
 
@@ -737,27 +789,22 @@ export default function CompanySettingsScreen() {
                 <View key={printer.KitchenTypeValue} style={styles.inputGroup}>
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                     <Text style={styles.inputLabel}>{printer.KitchenTypeName} Printer IP</Text>
-                    <TouchableOpacity
-                      style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}
-                      onPress={() => {
-                        const updated = [...kitchenPrinters];
-                        updated[index].IsEnabled = printer.IsEnabled === 0 ? 1 : 0;
-                        setKitchenPrinters(updated);
-                      }}
-                      activeOpacity={0.7}
-                    >
-                      <Ionicons
-                        name={printer.IsEnabled !== 0 ? "toggle" : "toggle-outline"}
-                        size={24}
-                        color={printer.IsEnabled !== 0 ? Theme.primary : Theme.textSecondary}
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                      <CustomSwitch
+                        value={!!printer.IsEnabled}
+                        onValueChange={(val) => {
+                          const updated = [...kitchenPrinters];
+                          updated[index].IsEnabled = val ? 1 : 0;
+                          setKitchenPrinters(updated);
+                        }}
                       />
-                      <Text style={{ fontSize: 12, fontFamily: Fonts.bold, color: printer.IsEnabled !== 0 ? Theme.primary : Theme.textSecondary }}>
-                        {printer.IsEnabled !== 0 ? "ON" : "OFF"}
+                      <Text style={{ fontSize: 12, fontFamily: Fonts.bold, color: !!printer.IsEnabled ? Theme.primary : Theme.textSecondary, minWidth: 28 }}>
+                        {!!printer.IsEnabled ? "ON" : "OFF"}
                       </Text>
-                    </TouchableOpacity>
+                    </View>
                   </View>
                   <TextInput 
-                    style={[styles.input, printer.IsEnabled === 0 && { opacity: 0.6, backgroundColor: '#f3f4f6' }]}
+                    style={[styles.input, !printer.IsEnabled && { opacity: 0.6, backgroundColor: '#f3f4f6' }]}
                     value={printer.PrinterPath || ''}
                     onChangeText={(val) => {
                       const updated = [...kitchenPrinters];
@@ -767,7 +814,7 @@ export default function CompanySettingsScreen() {
                     placeholder="e.g. 192.168.1.101"
                     placeholderTextColor={Theme.textMuted}
                     keyboardType="numeric"
-                    editable={printer.IsEnabled !== 0}
+                    editable={!!printer.IsEnabled}
                   />
                 </View>
               ))
@@ -1183,5 +1230,26 @@ const styles = StyleSheet.create({
   confirmBtnText: {
     color: '#fff',
     fontFamily: Fonts.bold,
+  },
+  switchTouchArea: {
+    paddingVertical: 4,
+  },
+  switchContainer: {
+    width: 50,
+    height: 28,
+    borderRadius: 14,
+    justifyContent: "center",
+    paddingHorizontal: 2,
+  },
+  switchThumb: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: "#fff",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 1.5,
+    elevation: 2,
   },
 });

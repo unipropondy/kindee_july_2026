@@ -784,8 +784,10 @@ export default function CompanySettingsScreen() {
 
             {loadingKitchens ? (
               <ActivityIndicator size="small" color={Theme.primary} />
-            ) : kitchenPrinters.length > 0 ? (
-              kitchenPrinters.map((printer, index) => (
+             ) : kitchenPrinters.length > 0 ? (
+              kitchenPrinters.map((printer, index) => {
+                console.log("渲染打印机:", printer.KitchenTypeName, "IsEnabled:", printer.IsEnabled, "类型:", typeof printer.IsEnabled);
+                return (
                 <View key={printer.KitchenTypeValue} style={styles.inputGroup}>
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                     <Text style={styles.inputLabel}>{printer.KitchenTypeName} Printer IP</Text>
@@ -817,7 +819,7 @@ export default function CompanySettingsScreen() {
                     editable={!!printer.IsEnabled}
                   />
                 </View>
-              ))
+              })
             ) : (
               <Text style={styles.note}>No kitchen types found in database.</Text>
             )}

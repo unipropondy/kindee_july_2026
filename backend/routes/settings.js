@@ -163,6 +163,7 @@ router.get("/kitchen-printers", async (req, res) => {
           ALTER TABLE PrintMaster ADD IsEnabled BIT NOT NULL DEFAULT 1;
         END
       `);
+      await pool.request().query("UPDATE PrintMaster SET IsEnabled = 1 WHERE IsEnabled IS NULL");
     } catch (e) {
       console.warn("Could not alter PrintMaster table:", e);
     }

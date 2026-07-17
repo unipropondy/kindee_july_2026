@@ -764,10 +764,16 @@ class SunmiPrinterService {
 
         if (item.modifiers && item.modifiers.length > 0) {
           await setSize(fontSizes.modifier);
+          try {
+            if (SunmiModule.setBold) await SunmiModule.setBold(true);
+          } catch (_) {}
           for (const mod of item.modifiers) {
             await SunmiModule.printText(formatter.left(`  + ${mod.ModifierName || mod.name}`));
             await SunmiModule.lineWrap(1);
           }
+          try {
+            if (SunmiModule.setBold) await SunmiModule.setBold(false);
+          } catch (_) {}
         }
 
         const comboSels = item.comboSelections || 

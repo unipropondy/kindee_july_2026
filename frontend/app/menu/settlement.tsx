@@ -1630,14 +1630,6 @@ const loadDishes = async () => {
           {isTablet && (
             <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
               <TouchableOpacity
-                style={[styles.confirmBtn, { backgroundColor: Theme.primary, paddingVertical: 8, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', gap: 6 }]}
-                onPress={() => router.push("/menu/rewardMaster")}
-              >
-                <Ionicons name="gift-outline" size={18} color="#fff" />
-                <Text style={styles.confirmBtnText}>Rewards</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
                 style={[styles.confirmBtn, { paddingVertical: 8, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', gap: 6 }]}
                 onPress={handlePrintReport}
               >

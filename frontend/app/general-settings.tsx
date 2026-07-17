@@ -108,6 +108,10 @@ export default function GeneralSettingsScreen() {
   const [printPollerToken, setPrintPollerToken] = useState(settings.printPollerToken || "unipro-pos-bridge-token-2026");
   const [printPollerStoreId, setPrintPollerStoreId] = useState(settings.printPollerStoreId || "1");
 
+  const [isPollerUnlocked, setIsPollerUnlocked] = useState(false);
+  const [passwordVerificationPurpose, setPasswordVerificationPurpose] = useState<"cashDrawer" | "poller" | null>(null);
+  const [pendingPrintPollerValue, setPendingPrintPollerValue] = useState<boolean | null>(null);
+
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [passwordValue, setPasswordValue] = useState("");
   const [verifyingPassword, setVerifyingPassword] = useState(false);
@@ -200,7 +204,30 @@ export default function GeneralSettingsScreen() {
   const handleToggleCashDrawer = (val: boolean) => {
     setPendingCashDrawerValue(val);
     setPasswordValue("");
+    setPasswordVerificationPurpose("cashDrawer");
     setShowPasswordModal(true);
+  };
+
+  const handleUnlockPoller = () => {
+    if (isPollerUnlocked) {
+      setIsPollerUnlocked(false);
+      showToast({ type: "info", message: "Poller Settings Locked" });
+    } else {
+      setPasswordValue("");
+      setPasswordVerificationPurpose("poller");
+      setShowPasswordModal(true);
+    }
+  };
+
+  const handleTogglePrintPoller = (val: boolean) => {
+    if (isPollerUnlocked) {
+      setEnablePrintPoller(val);
+    } else {
+      setPendingPrintPollerValue(val);
+      setPasswordValue("");
+      setPasswordVerificationPurpose("poller");
+      setShowPasswordModal(true);
+    }
   };
 
   const handlePasswordVerify = async () => {
@@ -217,10 +244,18 @@ export default function GeneralSettingsScreen() {
       });
       const verifyData = await verifyRes.json();
       if (verifyData.success) {
-        if (pendingCashDrawerValue !== null) {
+        if (passwordVerificationPurpose === "cashDrawer" && pendingCashDrawerValue !== null) {
           setEnableCashDrawer(pendingCashDrawerValue);
+        } else if (passwordVerificationPurpose === "poller") {
+          setIsPollerUnlocked(true);
+          if (pendingPrintPollerValue !== null) {
+            setEnablePrintPoller(pendingPrintPollerValue);
+          }
         }
         setShowPasswordModal(false);
+        setPasswordVerificationPurpose(null);
+        setPendingCashDrawerValue(null);
+        setPendingPrintPollerValue(null);
         showToast({ type: "success", message: "Access Unlocked" });
       } else {
         Alert.alert("Access Denied", "Incorrect admin password");
@@ -402,7 +437,7 @@ export default function GeneralSettingsScreen() {
             if (router.canGoBack()) {
               router.back();
             } else {
-              router.replace("/menu/settlement" as any);
+              router.replace("/(tabs)/category" as any);
             }
           }} 
           style={styles.backBtn} 
@@ -460,7 +495,32 @@ export default function GeneralSettingsScreen() {
               </View>
               <Text style={styles.settingDesc}>Poll and print QR orders from the online Railway server automatically.</Text>
             </View>
-            <CustomSwitch value={enablePrintPoller} onValueChange={setEnablePrintPoller} />
+            <CustomSwitch value={enablePrintPoller} onValueChange={handleTogglePrintPoller} />
+          </View>
+
+          <View style={{ flexDirection: "row", justifyContent: "flex-end", marginBottom: 12 }}>
+            <TouchableOpacity
+              style={[
+                styles.unlockPollerBtn,
+                isPollerUnlocked ? styles.unlockPollerBtnActive : styles.unlockPollerBtnInactive
+              ]}
+              onPress={handleUnlockPoller}
+              activeOpacity={0.7}
+            >
+              <Ionicons
+                name={isPollerUnlocked ? "lock-open-outline" : "lock-closed-outline"}
+                size={16}
+                color={isPollerUnlocked ? "#FF6B00" : "#64748B"}
+              />
+              <Text
+                style={[
+                  styles.unlockPollerBtnText,
+                  isPollerUnlocked ? styles.unlockPollerBtnTextActive : styles.unlockPollerBtnTextInactive
+                ]}
+              >
+                {isPollerUnlocked ? "Lock Poller Settings" : "Modify Poller Settings"}
+              </Text>
+            </TouchableOpacity>
           </View>
 
           {enablePrintPoller && (
@@ -468,32 +528,35 @@ export default function GeneralSettingsScreen() {
               <View style={styles.inputGroup}>
                 <Text style={styles.inputLabel}>Railway Poller URL</Text>
                 <TextInput
-                  style={styles.textInput}
+                  style={[styles.textInput, !isPollerUnlocked && { opacity: 0.6, backgroundColor: "#E2E8F0" }]}
                   placeholder="https://your-railway-url.app"
                   value={printPollerUrl}
                   onChangeText={setPrintPollerUrl}
                   autoCapitalize="none"
+                  editable={isPollerUnlocked}
                 />
               </View>
               <View style={styles.inputGroup}>
                 <Text style={styles.inputLabel}>Bridge Security Token</Text>
                 <TextInput
-                  style={styles.textInput}
+                  style={[styles.textInput, !isPollerUnlocked && { opacity: 0.6, backgroundColor: "#E2E8F0" }]}
                   placeholder="Enter security token"
                   value={printPollerToken}
                   onChangeText={setPrintPollerToken}
                   secureTextEntry
                   autoCapitalize="none"
+                  editable={isPollerUnlocked}
                 />
               </View>
               <View style={styles.inputGroup}>
                 <Text style={styles.inputLabel}>Store ID</Text>
                 <TextInput
-                  style={styles.textInput}
+                  style={[styles.textInput, !isPollerUnlocked && { opacity: 0.6, backgroundColor: "#E2E8F0" }]}
                   placeholder="Enter Store ID"
                   value={printPollerStoreId}
                   onChangeText={setPrintPollerStoreId}
                   autoCapitalize="none"
+                  editable={isPollerUnlocked}
                 />
               </View>
             </View>
@@ -509,7 +572,7 @@ export default function GeneralSettingsScreen() {
             if (router.canGoBack()) {
               router.back();
             } else {
-              router.replace("/menu/settlement" as any);
+              router.replace("/(tabs)/category" as any);
             }
           }}
           disabled={saving || loading}
@@ -542,22 +605,35 @@ export default function GeneralSettingsScreen() {
         <View style={styles.pwOverlay}>
           <View style={styles.pwModalContent}>
             <View style={styles.pwHeader}>
-              <Text style={styles.pwTitle}>Admin Verification Required</Text>
-              <TouchableOpacity onPress={() => setShowPasswordModal(false)} style={styles.pwClose}>
-                <Ionicons name="close" size={20} color={Theme.textSecondary} />
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                <View style={styles.pwIconWrapper}>
+                  <Ionicons name="lock-closed" size={18} color="#FF6B00" />
+                </View>
+                <Text style={styles.pwTitle}>Admin Verification</Text>
+              </View>
+              <TouchableOpacity onPress={() => setShowPasswordModal(false)} style={styles.pwClose} activeOpacity={0.7}>
+                <Ionicons name="close" size={20} color="#64748B" />
               </TouchableOpacity>
             </View>
             <View style={styles.pwBody}>
-              <Text style={styles.pwDesc}>Please enter admin password to unlock Cash Drawer settings.</Text>
-              <TextInput
-                style={styles.pwInput}
-                secureTextEntry
-                placeholder="Enter password..."
-                value={passwordValue}
-                onChangeText={setPasswordValue}
-                onSubmitEditing={handlePasswordVerify}
-                autoFocus
-              />
+              <Text style={styles.pwDesc}>
+                {passwordVerificationPurpose === "poller"
+                  ? "Please enter admin password to unlock QR Code Print Server settings."
+                  : "Please enter admin password to unlock Cash Drawer settings."}
+              </Text>
+              <View style={styles.pwInputContainer}>
+                <Ionicons name="keypad-outline" size={18} color="#94A3B8" style={{ marginRight: 10 }} />
+                <TextInput
+                  style={styles.pwInput}
+                  secureTextEntry
+                  placeholder="Enter password..."
+                  placeholderTextColor="#94A3B8"
+                  value={passwordValue}
+                  onChangeText={setPasswordValue}
+                  onSubmitEditing={handlePasswordVerify}
+                  autoFocus
+                />
+              </View>
               <TouchableOpacity
                 style={styles.pwBtn}
                 onPress={handlePasswordVerify}
@@ -769,26 +845,34 @@ const styles = StyleSheet.create({
   },
   pwOverlay: {
     flex: 1,
-    backgroundColor: "rgba(15, 23, 42, 0.4)",
+    backgroundColor: "rgba(15, 23, 42, 0.6)",
     justifyContent: "center",
     alignItems: "center",
   },
   pwModalContent: {
-    width: 380,
+    width: 400,
     backgroundColor: "#fff",
-    borderRadius: 16,
+    borderRadius: 24,
     padding: 24,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
+    shadowColor: "#0F172A",
+    shadowOffset: { width: 0, height: 12 },
     shadowOpacity: 0.15,
-    shadowRadius: 12,
-    elevation: 5,
+    shadowRadius: 24,
+    elevation: 8,
   },
   pwHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 16,
+    marginBottom: 20,
+  },
+  pwIconWrapper: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "#FFF7ED",
+    alignItems: "center",
+    justifyContent: "center",
   },
   pwTitle: {
     fontSize: 16,
@@ -799,7 +883,7 @@ const styles = StyleSheet.create({
     padding: 4,
   },
   pwBody: {
-    gap: 16,
+    gap: 20,
   },
   pwDesc: {
     fontSize: 13,
@@ -807,33 +891,42 @@ const styles = StyleSheet.create({
     color: Theme.textSecondary,
     lineHeight: 18,
   },
+  pwInputContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    height: 48,
+    borderWidth: 1.5,
+    borderColor: "#E2E8F0",
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    backgroundColor: "#F8FAFC",
+  },
   pwInput: {
-    height: 44,
-    borderWidth: 0,
-    backgroundColor: "#F3F4F6",
-    borderRadius: 8,
-    paddingHorizontal: 12,
+    flex: 1,
+    height: "100%",
     fontSize: 14,
     fontFamily: Fonts.regular,
     color: Theme.textPrimary,
     outlineWidth: 0,
   },
   pwBtn: {
-    height: 44,
-    backgroundColor: Theme.primary,
-    borderRadius: 8,
+    height: 48,
+    backgroundColor: "#FF6B00",
+    borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: Theme.primary,
+    shadowColor: "#FF6B00",
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 6,
-    elevation: 3,
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 4,
+    marginTop: 8,
   },
   pwBtnText: {
     fontSize: 14,
     fontFamily: Fonts.bold,
     color: "#fff",
+    letterSpacing: 0.5,
   },
   pollerSection: {
     marginTop: 20,
@@ -886,6 +979,33 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontFamily: Fonts.bold,
     color: "#fff",
+  },
+  unlockPollerBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  unlockPollerBtnActive: {
+    borderColor: "#FF6B00",
+    backgroundColor: "#FFF7ED",
+  },
+  unlockPollerBtnInactive: {
+    borderColor: "#CBD5E1",
+    backgroundColor: "#F8FAFC",
+  },
+  unlockPollerBtnText: {
+    fontSize: 12,
+    fontFamily: Fonts.bold,
+  },
+  unlockPollerBtnTextActive: {
+    color: "#FF6B00",
+  },
+  unlockPollerBtnTextInactive: {
+    color: "#64748B",
   },
 });
 

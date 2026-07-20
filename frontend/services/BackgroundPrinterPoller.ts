@@ -135,7 +135,7 @@ async function pollOnce() {
   let pollerUrl = settings.printPollerUrl || "https://qr-kindee-production.up.railway.app";
   
   if (__DEV__ && (pollerUrl.includes("railway.app") || !pollerUrl)) {
-    pollerUrl = API_URL.replace(":3000", ":5000");
+    pollerUrl = API_URL;
   }
 
   const token = settings.printPollerToken || "unipro-pos-bridge-token-2026";

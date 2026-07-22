@@ -849,6 +849,7 @@ const loadDishes = async () => {
 
   const totalCashIn = salesCash + displayOpeningAmount + totalCashInEntries + transactions.filter(t => t.TransactionType === "IN").reduce((sum, t) => sum + (parseFloat(t.Amount) || 0), 0);
   const totalCashOutSum = totalCashOut + transactions.filter(t => t.TransactionType === "OUT").reduce((sum, t) => sum + (parseFloat(t.Amount) || 0), 0);
+  const uiTotalCashIn = paymentsTotal + displayOpeningAmount + totalCashInEntries + transactions.filter(t => t.TransactionType === "IN").reduce((sum, t) => sum + (parseFloat(t.Amount) || 0), 0);
 
   const handleFinalize = async () => {
     try {
@@ -1956,7 +1957,7 @@ const loadDishes = async () => {
                     <Text style={{ fontFamily: Fonts.black, fontSize: 14, color: Theme.primaryDark }}>TOTAL</Text>
                   </View>
                   <Text style={{ flex: 1, textAlign: "right", fontFamily: Fonts.black, fontSize: 14, color: Theme.success }}>
-                    {formatCurrency(totalCashIn)}
+                    {formatCurrency(uiTotalCashIn)}
                   </Text>
                   <Text style={{ flex: 1, textAlign: "right", fontFamily: Fonts.black, fontSize: 14, color: Theme.danger }}>
                     {formatCurrency(totalCashOutSum)}
@@ -1965,9 +1966,9 @@ const loadDishes = async () => {
                 <View style={{ flexDirection: "row", paddingVertical: 10, paddingHorizontal: 12, backgroundColor: "#F9FAFB", borderTopWidth: 1, borderTopColor: "#E5E7EB", alignItems: "center" }}>
                   <View style={{ flex: 2, alignItems: 'flex-end', paddingRight: 15 }}>
                     <Text style={{ fontFamily: Fonts.black, fontSize: 13, color: Theme.textSecondary }}>NET AMOUNT</Text>
-</View>
-                  <Text style={{ flex: 2, textAlign: "right", fontFamily: Fonts.black, fontSize: 14, color: (totalCashIn - totalCashOutSum) >= 0 ? Theme.success : Theme.danger }}>
-                    {formatCurrency(totalCashIn - totalCashOutSum)}
+                  </View>
+                  <Text style={{ flex: 2, textAlign: "right", fontFamily: Fonts.black, fontSize: 14, color: (uiTotalCashIn - totalCashOutSum) >= 0 ? Theme.success : Theme.danger }}>
+                    {formatCurrency(uiTotalCashIn - totalCashOutSum)}
                   </Text>
                 </View>
               </View>

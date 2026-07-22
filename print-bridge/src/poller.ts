@@ -67,8 +67,10 @@ async function pollBackend(backend: BackendInstance) {
     const jobs = await backend.fetchPendingJobs();
     if (jobs.length > 0) {
       logger.info(`[${backend.name}] Retrieved ${jobs.length} pending print job(s) from Railway.`);
-      // Process all jobs in parallel
-      await Promise.all(jobs.map(job => processJob(backend, job)));
+      // Process jobs sequentially to avoid TCP socket collisions on thermal printers
+      for (const job of jobs) {
+        await processJob(backend, job);
+      }
     }
   } catch (err: any) {
     logger.error(`[${backend.name}] Poll cycle encountered an error: ${err.message}`);

@@ -130,6 +130,12 @@ async function pollOnce() {
     return;
   }
 
+  // Web browsers running POS cannot print directly via raw TCP socket.
+  // Do NOT poll or consume background print jobs on Web so that local Print Bridge handles them.
+  if (Platform.OS === "web") {
+    return;
+  }
+
   isPolling = true;
 
   let pollerUrl = settings.printPollerUrl || "https://qr-kindee-production.up.railway.app";

@@ -119,7 +119,10 @@ export async function sendToPrinter(ip: string, port: number, content: string, j
     client.connect(targetPort, ip, () => {
       clearTimeout(connectTimer);
       client.write(payload, () => {
-        client.end();
+        // Small delay to allow printer network buffer to drain before closing TCP socket
+        setTimeout(() => {
+          client.end();
+        }, 250);
       });
     });
 

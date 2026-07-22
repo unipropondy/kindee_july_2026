@@ -979,6 +979,40 @@ async function initDB(pool) {
       END
     `);
 
+    // 🚀 PERFORMANCE INDEXES: Prevent deadlocks and speed up common POS queries
+    await runQuery("Index RestaurantOrderCur - Lookup", `
+      IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_RestaurantOrderCur_Lookup' AND object_id = OBJECT_ID('RestaurantOrderCur'))
+      BEGIN
+        CREATE NONCLUSTERED INDEX IX_RestaurantOrderCur_Lookup
+        ON [dbo].[RestaurantOrderCur] (OrderNumber, Tableno, isOrderClosed)
+        INCLUDE (CreatedOn)
+      END
+    `);
+
+    await runQuery("Index RestaurantOrderDetailCur - OrderId", `
+      IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_RestaurantOrderDetailCur_OrderId' AND object_id = OBJECT_ID('RestaurantOrderDetailCur'))
+      BEGIN
+        CREATE NONCLUSTERED INDEX IX_RestaurantOrderDetailCur_OrderId
+        ON [dbo].[RestaurantOrderDetailCur] (OrderId)
+      END
+    `);
+
+    await runQuery("Index SettlementItemDetail - SettlementID", `
+      IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_SettlementItemDetail_SettlementID' AND object_id = OBJECT_ID('SettlementItemDetail'))
+      BEGIN
+        CREATE NONCLUSTERED INDEX IX_SettlementItemDetail_SettlementID
+        ON [dbo].[SettlementItemDetail] (SettlementID)
+      END
+    `);
+
+    await runQuery("Index TableMaster - CurrentOrderId", `
+      IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_TableMaster_CurrentOrderId' AND object_id = OBJECT_ID('TableMaster'))
+      BEGIN
+        CREATE NONCLUSTERED INDEX IX_TableMaster_CurrentOrderId
+        ON [dbo].[TableMaster] (CurrentOrderId)
+      END
+    `);
+
     console.log("✅ Database schema and performance indexes are up to date. (Rewards system active)");
 
 

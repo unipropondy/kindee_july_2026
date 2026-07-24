@@ -351,6 +351,7 @@ router.get("/usage/:memberId", async (req, res) => {
       `);
       
     res.json({
+        success: true,
         summary: summaryRes.recordset[0],
         items: itemsRes.recordset,
         transactions: txsRes.recordset

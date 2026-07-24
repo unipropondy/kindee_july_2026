@@ -195,6 +195,30 @@ router.post('/', authenticateBridge, async (req, res) => {
         printerIp = kp.PrinterIP || '';
         printerName = kp.PrinterName || '';
       }
+
+      // Fallback: If printer IP is still not resolved (e.g. kitchenTypeValue was '0' or not found),
+      // scan the ticket content for matching KitchenTypeName values from PrintMaster
+      if (!printerIp || printerIp.trim() === '') {
+        console.log("🔍 [printJobs] Kitchen printer not resolved by KitchenTypeValue. Scanning content to match KitchenTypeName...");
+        const allKitchenPrinters = await pool.request()
+          .query(`
+            SELECT KitchenTypeValue, KitchenTypeName, PrinterIP, PrinterName, IsEnabled 
+            FROM PrintMaster 
+            WHERE PrinterType = 2 AND IsActive = 1
+          `);
+        for (const kp of allKitchenPrinters.recordset) {
+          if (kp.KitchenTypeName && content.toLowerCase().includes(kp.KitchenTypeName.toLowerCase())) {
+            if (kp.IsEnabled === false || kp.IsEnabled === 0) {
+              console.log(`📡 [printJobs] Content match found for "${kp.KitchenTypeName}" but printer is disabled.`);
+              return res.json({ success: true, message: `Print job skipped (matched disabled kitchen ${kp.KitchenTypeName})` });
+            }
+            printerIp = kp.PrinterIP || '';
+            printerName = kp.PrinterName || '';
+            console.log(`🎯 [printJobs] Matched content to kitchen "${kp.KitchenTypeName}" -> IP: ${printerIp}`);
+            break;
+          }
+        }
+      }
     }
 
     // Fallback or Direct check for Cashier (1) or TakeAway (3) or if Kitchen Printer not found/not configured with IP

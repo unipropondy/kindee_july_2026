@@ -128,7 +128,7 @@ router.get("/dishes/all", async (req, res) => {
       LEFT JOIN (
         SELECT *, ROW_NUMBER() OVER(PARTITION BY KitchenTypeValue ORDER BY PrinterId) as rn 
         FROM PrintMaster WHERE IsActive = 1 AND PrinterType = 2
-      ) pm ON CAST(ckt.KitchenTypeCode AS INT) = pm.KitchenTypeValue AND pm.rn = 1
+      ) pm ON CAST(ckt.KitchenTypeCode AS VARCHAR(50)) = CAST(pm.KitchenTypeValue AS VARCHAR(50)) AND pm.rn = 1
       WHERE d.IsActive = 1 ORDER BY ISNULL(d.SordCode, 0) ASC, d.Name ASC
     `);
     setCache(cacheKey, result.recordset);
@@ -190,7 +190,7 @@ router.get("/dishes/group/:DishGroupId", async (req, res) => {
               WHERE IsActive = 1
                 AND PrinterType = 2
           ) pm
-          ON CAST(ckt.KitchenTypeCode AS INT) = pm.KitchenTypeValue
+          ON CAST(ckt.KitchenTypeCode AS VARCHAR(50)) = CAST(pm.KitchenTypeValue AS VARCHAR(50))
           AND pm.rn = 1
  
           WHERE d.IsActive = 1

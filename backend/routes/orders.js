@@ -418,7 +418,7 @@ async function syncToProfessionalTables(
       // Prefer the basePrice sent by the frontend; fall back to item.price.
       // item.basePrice is the original combo dish cost BEFORE options are added.
       // Using it prevents surcharges from stacking on repeated DB syncs.
-      const basePrice = (item.basePrice !== undefined && item.basePrice !== null && item.basePrice !== "") ? parseFloat(item.basePrice) : unitPrice;
+      let basePrice = (item.basePrice !== undefined && item.basePrice !== null && item.basePrice !== "") ? parseFloat(item.basePrice) : unitPrice;
 
       let totalSurcharge = 0;
       item.comboSelections.forEach(group => {
@@ -428,6 +428,13 @@ async function syncToProfessionalTables(
           });
         }
       });
+
+      // If basePrice matches the unitPrice (which already includes the options' prices) and there is surcharge/option costs,
+      // we must subtract totalSurcharge to get the correct original basePrice and prevent double-counting.
+      if (basePrice === unitPrice && totalSurcharge > 0) {
+        basePrice = Math.max(0, basePrice - totalSurcharge);
+      }
+
       resolvedUnitPrice = basePrice + totalSurcharge;
 
       // Wrap selections with the basePrice so we can recover it from the DB

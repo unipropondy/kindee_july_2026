@@ -202,9 +202,9 @@ router.post('/', authenticateBridge, async (req, res) => {
         console.log("🔍 [printJobs] Kitchen printer not resolved by KitchenTypeValue. Scanning content to match KitchenTypeName...");
         const allKitchenPrinters = await pool.request()
           .query(`
-            SELECT KitchenTypeValue, KitchenTypeName, PrinterIP, PrinterName, IsEnabled 
-            FROM PrintMaster 
-            WHERE PrinterType = 2 AND IsActive = 1
+             SELECT KitchenTypeValue, KitchenTypeName, PrinterIP, PrinterName, IsEnabled 
+             FROM PrintMaster 
+             WHERE PrinterType = 2 AND IsActive = 1 AND PrinterIP IS NOT NULL AND PrinterIP <> '' AND PrinterIP <> ' '
           `);
         for (const kp of allKitchenPrinters.recordset) {
           if (kp.KitchenTypeName && content.toLowerCase().includes(kp.KitchenTypeName.toLowerCase())) {

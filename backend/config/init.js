@@ -1152,23 +1152,34 @@ async function syncKitchensToPrintMaster(pool) {
     let reactivated = 0;
     for (const [code, name] of kitchenMap) {
       if (!existingMap.has(code)) {
-        // Brand new — insert with empty IP (admin fills it in Receipt Settings)
+        // Brand new — insert with existing IP if matching name exists, otherwise empty
         await pool.request()
           .input("name", sql.NVarChar, name)
           .input("code", sql.Int, code)
           .query(`
+            DECLARE @existingIp NVARCHAR(100) = '';
+            DECLARE @existingPath NVARCHAR(100) = '';
+            SELECT TOP 1 @existingIp = PrinterIP, @existingPath = PrinterPath 
+            FROM PrintMaster 
+            WHERE KitchenTypeName = @name 
+              AND PrinterType = 2 
+              AND IsActive = 1 
+              AND PrinterIP IS NOT NULL 
+              AND PrinterIP <> '' 
+              AND PrinterIP <> ' ';
+
             INSERT INTO PrintMaster (
               PrinterId, PrinterName, PrinterPath, PrinterIP,
               PrinterType, PrintSection, KitchenTypeName,
               KitchenTypeValue, IsActive, PrintCopy
             ) VALUES (
-              NEWID(), @name, '', '',
+              NEWID(), @name, @existingPath, @existingIp,
               2, 1, @name,
               @code, 1, 1
             )
           `);
         inserted++;
-        console.log(`🍳 [KitchenSync] Auto-added "${name}" to PrintMaster (code=${code})`);
+        console.log(`🍳 [KitchenSync] Auto-added "${name}" to PrintMaster (code=${code}) with IP: ${existingMap.has(code) ? '' : 'inherited/new'}`);
       } else if (existingMap.get(code) === false || existingMap.get(code) === 0) {
         // Soft-deleted but kitchen is still active → reactivate
         await pool.request()

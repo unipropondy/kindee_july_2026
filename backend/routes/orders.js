@@ -1004,13 +1004,14 @@ router.post("/send", async (req, res) => {
           .input("tableNo", sql.VarChar(20), cleanId).query(`SELECT 
             d.OrderDetailId as lineItemId, d.DishId as id, dish.Name as name,
             d.Quantity as qty, d.PricePerUnit as price, d.StatusCode, 
-            d.ModifiersJSON, d.Remarks as note, d.isTakeAway as isTakeaway,
+            d.ModifiersJSON, d.ComboDetailsJSON, d.Remarks as note, d.isTakeAway as isTakeaway,
             ISNULL(d.DiscountAmount, 0) as discount,
             ISNULL(d.DiscountType, NULL) as discountType,
             CAST(ISNULL(dish.IsDiscountAllowed, 1) AS INT) as IsDiscountAllowed,
             ISNULL(ckt.KitchenTypeCode, '2') as KitchenTypeCode, 
             ISNULL(ISNULL(ckt.KitchenTypeName, cat.CategoryName), 'KITCHEN') as KitchenTypeName,
-            pm.PrinterPath as PrinterIP
+            pm.PrinterPath as PrinterIP,
+            ISNULL(dish.IsCombo, 0) as isCombo
             FROM RestaurantOrderDetailCur d
             JOIN RestaurantOrderCur h ON d.OrderId = h.OrderId
             LEFT JOIN DishMaster dish ON d.DishId = dish.DishId
@@ -1188,7 +1189,8 @@ router.get("/cart/:tableId", async (req, res) => {
           ISNULL(ckt.KitchenTypeCode, '2') as KitchenTypeCode, 
           ISNULL(ISNULL(ckt.KitchenTypeName, cat.CategoryName), 'KITCHEN') as KitchenTypeName,
           pm.PrinterPath as PrinterIP,
-          ISNULL(dish.isServiceCharge, 1) as isServiceCharge
+          ISNULL(dish.isServiceCharge, 1) as isServiceCharge,
+          ISNULL(dish.IsCombo, 0) as isCombo
         FROM RestaurantOrderDetailCur d 
         JOIN RestaurantOrderCur h ON d.OrderId = h.OrderId 
         LEFT JOIN DishMaster dish ON d.DishId = dish.DishId
@@ -1215,6 +1217,7 @@ router.get("/cart/:tableId", async (req, res) => {
 
     const items = result.recordset.map((i) => ({
       ...i,
+      isCombo: !!i.isCombo,
       modifiers: i.ModifiersJSON
         ? (() => {
             try {
@@ -1227,7 +1230,8 @@ router.get("/cart/:tableId", async (req, res) => {
       comboSelections: i.ComboDetailsJSON
         ? (() => {
             try {
-              return JSON.parse(i.ComboDetailsJSON);
+              const parsed = JSON.parse(i.ComboDetailsJSON);
+              return Array.isArray(parsed) ? parsed : (parsed.groups || []);
             } catch {
               return [];
             }
@@ -1783,7 +1787,8 @@ router.get("/active-kitchen", async (req, res) => {
         ISNULL(ckt.KitchenTypeCode, '0') as KitchenTypeCode, 
         ISNULL(ISNULL(ckt.KitchenTypeName, cat.CategoryName), 'KITCHEN') as KitchenTypeName,
         pm.PrinterPath as PrinterIP,
-        tm.TableId, tm.DiningSection, tm.entry_status, tm.PAYMENT_STATUS, tm.Status
+        tm.TableId, tm.DiningSection, tm.entry_status, tm.PAYMENT_STATUS, tm.Status,
+        ISNULL(dish.IsCombo, 0) as isCombo
       FROM RestaurantOrderDetailCur d 
       JOIN RestaurantOrderCur h ON d.OrderId = h.OrderId 
       LEFT JOIN DishMaster dish ON d.DishId = dish.DishId
@@ -1853,8 +1858,18 @@ router.get("/active-kitchen", async (req, res) => {
       orders[row.orderId].items.push({
         ...row,
         status: statusMap[row.StatusCode],
+        isCombo: !!row.isCombo,
         modifiers: row.ModifiersJSON ? JSON.parse(row.ModifiersJSON) : [],
-        comboSelections: row.ComboDetailsJSON ? JSON.parse(row.ComboDetailsJSON) : [],
+        comboSelections: row.ComboDetailsJSON
+          ? (() => {
+              try {
+                const parsed = JSON.parse(row.ComboDetailsJSON);
+                return Array.isArray(parsed) ? parsed : (parsed.groups || []);
+              } catch {
+                return [];
+              }
+            })()
+          : [],
       });
     });
     res.json({ serverTime: Date.now(), orders: Object.values(orders) });
